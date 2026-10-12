@@ -250,14 +250,14 @@ def test_unknown_jurisdiction_still_runs_common_checks(auditpulse: AuditPulse) -
 
 
 def test_model_record_reads_the_active_artifact(settings: Settings, tmp_path) -> None:
-    from ledger_lens.auditpulse.facts import bias_report_path, model_record
+    from ledger_lens.shared.governance import bias_report_path, model_record
 
     active = tmp_path / "current.json"
     active.write_text(settings.risk_model_path.read_text())
     version = json.loads(active.read_text())["version"]
     record = model_record(active, version)
     assert record and record.validation_auc and not record.bias_report
-    bias_report_path(active).write_text("{}")
+    bias_report_path(active).write_text('{"four_fifths_ratio": 0.97}')
     assert model_record(active, version).bias_report  # type: ignore[union-attr]
     assert model_record(active, "older-version").validation_auc is None  # type: ignore[union-attr]
 

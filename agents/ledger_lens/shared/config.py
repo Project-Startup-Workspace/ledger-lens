@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     retrieval_backend: Backend = Backend.LOCAL
     data_dir: Path = REPO_ROOT / ".data"
     evidence_bucket: str | None = None
-    audit_bucket: str | None = None
+    audit_bucket: str | None = None  # Cloud Storage bucket with a locked retention policy
+    # Cloud KMS EC_SIGN_ED25519 key version that signs audit packs; a local key otherwise.
+    audit_kms_key: str | None = None
     bq_dataset: str = "ledger_lens"
     model_armor_template: str | None = None
     rag_corpus: str | None = None

@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from ledger_lens.shared.dates import week_start
 from ledger_lens.shared.schemas import (
     BoundingBox,
     CashFlowSummary,
@@ -22,11 +23,6 @@ from ledger_lens.shared.schemas import (
 _IN_WORDS = {"in", "credit", "cr", "received", "+"}
 _OUT_WORDS = {"out", "debit", "dr", "paid", "-"}
 ZERO = Decimal(0)
-
-
-def week_start(day: date) -> date:
-    """Monday of the ISO week containing `day`."""
-    return day - timedelta(days=day.weekday())
 
 
 def box_from_gemini(box_2d: list[int]) -> BoundingBox | None:
