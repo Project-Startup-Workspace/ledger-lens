@@ -33,7 +33,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [ ] | 20 | Live voice interview | P2 | Cut until after submission (playbook cut line) |
 | [~] | 21 | Full flow on every demo case | P0 | Works locally on all 3 cases; deployed URL pending |
 | [~] | 22 | Final evaluation and bias check; results table | P0 | #12: bias check passes (0.97); accuracy on hand-written pages needs Gemini |
-| [ ] | — | Containers, docker-compose, infra scripts, deploy and eval workflows | P0 | next |
+| [x] | — | Containers, docker-compose, infra scripts, deploy and eval workflows | P0 | #12, #13 |
 | [ ] | 25 | README, architecture doc, demo script | P1 | next |
 
 ## Phase 2: Google Cloud (needs accounts and credentials)
