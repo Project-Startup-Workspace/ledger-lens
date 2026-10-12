@@ -1,0 +1,235 @@
+{
+  "script": "Latin",
+  "language": "vi",
+  "currency": "VND",
+  "entries": [
+    {
+      "date": "2026-08-26",
+      "description": "Bán hàng",
+      "amount": 2065000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        143,
+        596,
+        160,
+        739
+      ],
+      "raw_text": "26/08 Bán hàng 2065000"
+    },
+    {
+      "date": "2026-08-27",
+      "description": "Bán hàng",
+      "amount": 1516000.0,
+      "direction": "in",
+      "confidence": 0.95,
+      "box_2d": [
+        183,
+        606,
+        200,
+        740
+      ],
+      "raw_text": "27/08 Bán hàng 1516000"
+    },
+    {
+      "date": "2026-08-28",
+      "description": "Bán hàng",
+      "amount": 2020000.0,
+      "direction": "in",
+      "confidence": 0.89,
+      "box_2d": [
+        222,
+        599,
+        239,
+        742
+      ],
+      "raw_text": "28/08 Bán hàng 2020000"
+    },
+    {
+      "date": "2026-08-28",
+      "description": "Nhập hàng",
+      "amount": 4639000.0,
+      "direction": "out",
+      "confidence": 0.95,
+      "box_2d": [
+        264,
+        805,
+        281,
+        948
+      ],
+      "raw_text": "28/08 Nhập hàng 4639000"
+    },
+    {
+      "date": "2026-08-29",
+      "description": "Bán hàng",
+      "amount": 985000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        300,
+        595,
+        318,
+        712
+      ],
+      "raw_text": "29/08 Bán hàng 985000"
+    },
+    {
+      "date": "2026-08-31",
+      "description": "Bán hàng",
+      "amount": 1061000.0,
+      "direction": "in",
+      "confidence": 0.9,
+      "box_2d": [
+        344,
+        603,
+        361,
+        737
+      ],
+      "raw_text": "31/08 Bán hàng 1061000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Bán hàng",
+      "amount": 2931000.0,
+      "direction": "in",
+      "confidence": 0.98,
+      "box_2d": [
+        384,
+        601,
+        401,
+        739
+      ],
+      "raw_text": "01/09 Bán hàng 2931000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Nhập hàng",
+      "amount": 7470000.0,
+      "direction": "out",
+      "confidence": 0.86,
+      "box_2d": [
+        424,
+        795,
+        441,
+        938
+      ],
+      "raw_text": "01/09 Nhập hàng 7470000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Tiền sạp",
+      "amount": 2000000.0,
+      "direction": "out",
+      "confidence": 0.97,
+      "box_2d": [
+        461,
+        801,
+        478,
+        944
+      ],
+      "raw_text": "01/09 Tiền sạp 2000000"
+    },
+    {
+      "date": "2026-09-02",
+      "description": "Bán hàng",
+      "amount": 1163000.0,
+      "direction": "in",
+      "confidence": 0.86,
+      "box_2d": [
+        506,
+        597,
+        523,
+        731
+      ],
+      "raw_text": "02/09 Bán hàng 1163000"
+    },
+    {
+      "date": "2026-09-03",
+      "description": "Bán hàng",
+      "amount": 2963000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        544,
+        601,
+        561,
+        744
+      ],
+      "raw_text": "03/09 Bán hàng 2963000"
+    },
+    {
+      "date": "2026-09-04",
+      "description": "Bán hàng",
+      "amount": 1431000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        584,
+        598,
+        601,
+        732
+      ],
+      "raw_text": "04/09 Bán hàng 1431000"
+    },
+    {
+      "date": "2026-09-04",
+      "description": "Nhập hàng",
+      "amount": 6241000.0,
+      "direction": "out",
+      "confidence": 0.92,
+      "box_2d": [
+        626,
+        796,
+        642,
+        934
+      ],
+      "raw_text": "04/09 Nhập hàng 6241000"
+    },
+    {
+      "date": "2026-09-05",
+      "description": "Bán hàng",
+      "amount": 1651000.0,
+      "direction": "in",
+      "confidence": 0.94,
+      "box_2d": [
+        665,
+        595,
+        682,
+        729
+      ],
+      "raw_text": "05/09 Bán hàng 1651000"
+    },
+    {
+      "date": "2026-09-05",
+      "description": "Tiền điện",
+      "amount": 300000.0,
+      "direction": "out",
+      "confidence": 0.87,
+      "box_2d": [
+        701,
+        799,
+        718,
+        916
+      ],
+      "raw_text": "05/09 Tiền điện 300000"
+    },
+    {
+      "date": "2026-09-06",
+      "description": "Bán hàng",
+      "amount": 6210000.0,
+      "direction": "in",
+      "confidence": 0.42,
+      "box_2d": [
+        746,
+        595,
+        763,
+        733
+      ],
+      "raw_text": "06/09 Bán hàng 2610000"
+    }
+  ],
+  "other_text": "Sổ thu chi - Sạp chị Lan — 2",
+  "warnings": [
+    "One amount is blurred by a stain."
+  ]
+}

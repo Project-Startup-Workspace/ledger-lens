@@ -1,0 +1,21 @@
+{
+  "jurisdiction": "lk",
+  "applicant": {
+    "full_name": "Kamala Perera",
+    "date_of_birth": "1979-11-02",
+    "national_id": "797063456V",
+    "phone": "0771234567",
+    "business_name": "Kamala Stores",
+    "business_type": "grocery shop",
+    "years_in_business": 11,
+    "preferred_language": "si",
+    "guarantor_name": "Sunil Perera"
+  },
+  "loan": {
+    "amount": 250000,
+    "currency": "LKR",
+    "tenor_months": 18,
+    "annual_rate_pct": 28,
+    "purpose": "Bulk rice and dhal stock before the festival season"
+  }
+}

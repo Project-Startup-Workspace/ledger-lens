@@ -1,0 +1,51 @@
+{
+  "image": "notebook-p4.png",
+  "script": "Latin",
+  "entries": [
+    {
+      "date": "2026-09-28",
+      "amount": 1888000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-29",
+      "amount": 1481000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-29",
+      "amount": 3623000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-30",
+      "amount": 1644000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-10-01",
+      "amount": 1744000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-10-01",
+      "amount": 1500000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-10-02",
+      "amount": 1266000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-10-02",
+      "amount": 3910000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-10-03",
+      "amount": 1808000,
+      "direction": "in"
+    }
+  ]
+}

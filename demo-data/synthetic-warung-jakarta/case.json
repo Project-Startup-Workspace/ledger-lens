@@ -1,0 +1,21 @@
+{
+  "jurisdiction": "lk",
+  "applicant": {
+    "full_name": "Siti Rahayu",
+    "date_of_birth": "1986-04-17",
+    "national_id": "3174015704860002",
+    "phone": "+62 812 5550 1234",
+    "business_name": "Warung Bu Siti",
+    "business_type": "grocery kiosk",
+    "years_in_business": 6,
+    "preferred_language": "id",
+    "guarantor_name": "Agus Santoso"
+  },
+  "loan": {
+    "amount": 15000000,
+    "currency": "IDR",
+    "tenor_months": 12,
+    "annual_rate_pct": 26,
+    "purpose": "Second refrigerator for drinks"
+  }
+}

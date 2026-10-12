@@ -1,0 +1,291 @@
+{
+  "script": "Latin",
+  "language": "id",
+  "currency": "IDR",
+  "entries": [
+    {
+      "date": "2026-08-27",
+      "description": "Penjualan",
+      "amount": 1736000.0,
+      "direction": "in",
+      "confidence": 0.89,
+      "box_2d": [
+        140,
+        596,
+        157,
+        734
+      ],
+      "raw_text": "27/08 Penjualan 1736000"
+    },
+    {
+      "date": "2026-08-28",
+      "description": "Penjualan",
+      "amount": 1304000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        183,
+        606,
+        199,
+        744
+      ],
+      "raw_text": "28/08 Penjualan 1304000"
+    },
+    {
+      "date": "2026-08-28",
+      "description": "Belanja stok",
+      "amount": 4149000.0,
+      "direction": "out",
+      "confidence": 0.9,
+      "box_2d": [
+        224,
+        800,
+        241,
+        938
+      ],
+      "raw_text": "28/08 Belanja stok 4149000"
+    },
+    {
+      "date": "2026-08-29",
+      "description": "Penjualan",
+      "amount": 1798000.0,
+      "direction": "in",
+      "confidence": 0.9,
+      "box_2d": [
+        266,
+        597,
+        284,
+        735
+      ],
+      "raw_text": "29/08 Penjualan 1798000"
+    },
+    {
+      "date": "2026-08-31",
+      "description": "Penjualan",
+      "amount": 1513000.0,
+      "direction": "in",
+      "confidence": 0.9,
+      "box_2d": [
+        304,
+        606,
+        321,
+        740
+      ],
+      "raw_text": "31/08 Penjualan 1513000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Penjualan",
+      "amount": 1753000.0,
+      "direction": "in",
+      "confidence": 0.95,
+      "box_2d": [
+        342,
+        606,
+        359,
+        744
+      ],
+      "raw_text": "01/09 Penjualan 1753000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Belanja stok",
+      "amount": 4071000.0,
+      "direction": "out",
+      "confidence": 0.97,
+      "box_2d": [
+        384,
+        804,
+        401,
+        942
+      ],
+      "raw_text": "01/09 Belanja stok 4071000"
+    },
+    {
+      "date": "2026-09-01",
+      "description": "Sewa",
+      "amount": 1500000.0,
+      "direction": "out",
+      "confidence": 0.94,
+      "box_2d": [
+        424,
+        795,
+        441,
+        933
+      ],
+      "raw_text": "01/09 Sewa 1500000"
+    },
+    {
+      "date": "2026-09-02",
+      "description": "Penjualan",
+      "amount": 1156000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        464,
+        594,
+        481,
+        728
+      ],
+      "raw_text": "02/09 Penjualan 1156000"
+    },
+    {
+      "date": "2026-09-03",
+      "description": "Penjualan",
+      "amount": 1378000.0,
+      "direction": "in",
+      "confidence": 0.96,
+      "box_2d": [
+        501,
+        597,
+        518,
+        735
+      ],
+      "raw_text": "03/09 Penjualan 1378000"
+    },
+    {
+      "date": "2026-09-04",
+      "description": "Penjualan",
+      "amount": 1222000.0,
+      "direction": "in",
+      "confidence": 0.94,
+      "box_2d": [
+        544,
+        603,
+        560,
+        741
+      ],
+      "raw_text": "04/09 Penjualan 1222000"
+    },
+    {
+      "date": "2026-09-04",
+      "description": "Belanja stok",
+      "amount": 3407000.0,
+      "direction": "out",
+      "confidence": 0.95,
+      "box_2d": [
+        581,
+        795,
+        598,
+        938
+      ],
+      "raw_text": "04/09 Belanja stok 3407000"
+    },
+    {
+      "date": "2026-09-05",
+      "description": "Penjualan",
+      "amount": 1446000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        624,
+        600,
+        640,
+        738
+      ],
+      "raw_text": "05/09 Penjualan 1446000"
+    },
+    {
+      "date": "2026-09-05",
+      "description": "Listrik",
+      "amount": 450000.0,
+      "direction": "out",
+      "confidence": 0.93,
+      "box_2d": [
+        665,
+        803,
+        682,
+        920
+      ],
+      "raw_text": "05/09 Listrik 450000"
+    },
+    {
+      "date": "2026-09-06",
+      "description": "Penjualan",
+      "amount": 1385000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        705,
+        599,
+        722,
+        737
+      ],
+      "raw_text": "06/09 Penjualan 1385000"
+    },
+    {
+      "date": "2026-09-07",
+      "description": "Penjualan",
+      "amount": 1869000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        741,
+        598,
+        759,
+        736
+      ],
+      "raw_text": "07/09 Penjualan 1869000"
+    },
+    {
+      "date": "2026-09-08",
+      "description": "Penjualan",
+      "amount": 1657000.0,
+      "direction": "in",
+      "confidence": 0.93,
+      "box_2d": [
+        784,
+        600,
+        801,
+        738
+      ],
+      "raw_text": "08/09 Penjualan 1657000"
+    },
+    {
+      "date": "2026-09-08",
+      "description": "Belanja stok",
+      "amount": 440000.0,
+      "direction": "out",
+      "confidence": 0.42,
+      "box_2d": [
+        826,
+        799,
+        843,
+        942
+      ],
+      "raw_text": "08/09 Belanja stok 4040000"
+    },
+    {
+      "date": "2026-09-09",
+      "description": "Penjualan",
+      "amount": 1291000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        861,
+        598,
+        878,
+        732
+      ],
+      "raw_text": "09/09 Penjualan 1291000"
+    },
+    {
+      "date": "2026-09-10",
+      "description": "Penjualan",
+      "amount": 1674000.0,
+      "direction": "in",
+      "confidence": 0.93,
+      "box_2d": [
+        904,
+        598,
+        921,
+        736
+      ],
+      "raw_text": "10/09 Penjualan 1674000"
+    }
+  ],
+  "other_text": "Buku Kas Warung Bu Siti — 2",
+  "warnings": [
+    "One amount is blurred by a stain."
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "image": "notebook-p2.png",
+  "script": "Sinhala",
+  "entries": [
+    {
+      "date": "2026-08-26",
+      "amount": 16000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-27",
+      "amount": 20000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-28",
+      "amount": 20000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-28",
+      "amount": 49000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-08-29",
+      "amount": 18000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-31",
+      "amount": 17000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 18000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 49000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 25000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-02",
+      "amount": 19000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-03",
+      "amount": 21000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-04",
+      "amount": 14000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-04",
+      "amount": 46000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-05",
+      "amount": 17000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-05",
+      "amount": 6500,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-07",
+      "amount": 17000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-08",
+      "amount": 16000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-08",
+      "amount": 39000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-09",
+      "amount": 18000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-10",
+      "amount": 20000,
+      "direction": "in"
+    }
+  ]
+}
