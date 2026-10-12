@@ -1,0 +1,39 @@
+name: Evaluation
+
+# Read accuracy per script and the fairness check. Offline on every run; uses Gemini
+# when the GCP variables exist and the run was started by hand with live=true.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: Score live Gemini reads instead of recorded responses
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 18 * * *" # nightly, 00:00 in Sri Lanka
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agents
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0 # no floating major tag is published
+      - run: uv sync --locked --all-extras
+      - if: inputs.live && vars.WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - name: Run evaluation
+        env:
+          LL_LLM_PROVIDER: ${{ (inputs.live && vars.WIF_PROVIDER != '') && 'vertex' || 'offline' }}
+          LL_GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+        run: uv run python -m ledger_lens.evaluation
+      - run: cat ../eval/results/latest.md >> "$GITHUB_STEP_SUMMARY"

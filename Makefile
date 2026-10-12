@@ -4,7 +4,7 @@ UV ?= uv
 AGENTS := agents
 WEB := web
 
-.PHONY: help setup check lint typecheck test api a2a web demo-data train clean
+.PHONY: help setup check lint typecheck test api a2a web demo-data train eval clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -38,6 +38,9 @@ demo-data: ## Regenerate the synthetic demo notebooks, statements and fixtures
 
 train: ## Retrain the illustrative risk model on synthetic applicants
 	cd $(AGENTS) && $(UV) run python -m ledger_lens.risk.training
+
+eval: ## Score read accuracy per script and the risk model's fairness (eval/results)
+	cd $(AGENTS) && $(UV) run python -m ledger_lens.evaluation
 
 clean: ## Remove caches and local runtime data
 	rm -rf $(AGENTS)/.pytest_cache $(AGENTS)/.mypy_cache $(AGENTS)/.ruff_cache .data

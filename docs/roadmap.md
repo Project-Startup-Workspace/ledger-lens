@@ -17,7 +17,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [x] | 4 | Walking skeleton: coordinator + 5 agents end to end | P0 | #9 |
 | [x] | 5 | Evidence agent: extraction schema, prompt, bounding boxes | P0 | #3 |
 | [x] | 6 | Cash-flow calculator in Python, with unit tests | P0 | #3 |
-| [ ] | 7 | Evaluation harness: read accuracy per script on the labelled set | P0 | in progress (next PR) |
+| [x] | 7 | Evaluation harness: read accuracy per script on the labelled set | P0 | #12 |
 | [x] | 8 | Web: camera upload and evidence viewer with highlight boxes | P0 | #10 |
 | [x] | 9 | Risk model with Shapley reason codes (local; BigQuery ML SQL ready) | P0 | #5 |
 | [x] | 10 | Consistency checker: notebook vs wallet, week by week | P0 | #4 |
@@ -32,7 +32,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [~] | 19 | Spoken explanation with Gemini TTS | P1 | #8: code ready; needs Gemini credentials. Device voice used offline |
 | [ ] | 20 | Live voice interview | P2 | Cut until after submission (playbook cut line) |
 | [~] | 21 | Full flow on every demo case | P0 | Works locally on all 3 cases; deployed URL pending |
-| [ ] | 22 | Final evaluation and bias check; results table | P0 | with #7 |
+| [~] | 22 | Final evaluation and bias check; results table | P0 | #12: bias check passes (0.97); accuracy on hand-written pages needs Gemini |
 | [ ] | — | Containers, docker-compose, infra scripts, deploy and eval workflows | P0 | next |
 | [ ] | 25 | README, architecture doc, demo script | P1 | next |
 
