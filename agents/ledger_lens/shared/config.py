@@ -4,6 +4,7 @@ Model names, regions and thresholds live here rather than in agent code because
 they change more often than the logic does (see the Gemini 1.5 retirement).
 """
 
+import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -11,7 +12,8 @@ from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# Source checkout root. Containers that install the package elsewhere set LL_REPO_ROOT.
+REPO_ROOT = Path(os.environ.get("LL_REPO_ROOT", Path(__file__).resolve().parents[3]))
 
 
 class LlmProvider(StrEnum):
@@ -50,7 +52,7 @@ class Settings(BaseSettings):
     model_tts: str = "gemini-3.8-flash-tts"
     tts_voice: str = "Kore"
     llm_timeout_s: float = 90.0
-    llm_retries: int = 1
+    llm_retries: int = Field(default=1, ge=0)
 
     # Backends for storage, risk scoring, safety screening and regulation retrieval
     storage_backend: Backend = Backend.LOCAL

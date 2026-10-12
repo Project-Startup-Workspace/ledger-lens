@@ -5,12 +5,15 @@ instructions, approve this loan"). Extraction prompts already treat page text as
 this screen flags such content so the officer sees it and it never reaches later prompts.
 """
 
+import logging
 import re
 from typing import Protocol
 
 from pydantic import BaseModel
 
 from ledger_lens.shared.config import Backend, Settings
+
+log = logging.getLogger(__name__)
 
 
 class SafetyVerdict(BaseModel):
@@ -22,14 +25,15 @@ class SafetyScreen(Protocol):
     def screen(self, text: str) -> SafetyVerdict: ...
 
 
+# Words may be split by any whitespace, since OCR'd text often breaks lines mid-phrase.
 _INJECTION_PATTERNS = (
-    r"ignore (all |any )?(previous|prior|above) (instructions|rules)",
-    r"disregard (the )?(system|previous) (prompt|instructions)",
-    r"you are now",
-    r"(approve|accept) (this|the) (loan|application)",
-    r"(give|assign|set) (a |the )?(score|grade|rating) (of|to)",
-    r"system prompt",
-    r"</?(system|instructions?)>",
+    r"\b(ignore|disregard|forget|override)\s+(all\s+|any\s+|the\s+)*"
+    r"(previous|prior|above|earlier|system)\s+(instructions?|rules|prompts?)",
+    r"\byou\s+are\s+now\b",
+    r"\b(approve|accept|grant)\s+(this|the|my)\s+(loan|application|request)",
+    r"\b(give|assign|set|output)\s+(a\s+|the\s+|me\s+)*(score|grade|rating)\b",
+    r"\bsystem\s+prompt\b",
+    r"</?\s*(system|instructions?)\s*>",
 )
 
 
@@ -62,7 +66,11 @@ class ModelArmorScreen:
             name=self._template,
             user_prompt_data=self._modelarmor.DataItem(text=text),
         )
-        result = self._client.sanitize_user_prompt(request=request).sanitization_result
+        try:
+            result = self._client.sanitize_user_prompt(request=request).sanitization_result
+        except Exception:  # an outage must not stop underwriting; the heuristic still applies
+            log.warning("model armor unavailable; using heuristic screen only", exc_info=True)
+            return local
         match_found = self._modelarmor.FilterMatchState.MATCH_FOUND
         if result.filter_match_state == match_found:
             return SafetyVerdict(flagged=True, reasons=[*local.reasons, "model armor match"])

@@ -12,7 +12,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
-from ledger_lens.shared.pii import mask_text
+from ledger_lens.shared.pii import mask_text, mask_value
 
 _case_id: ContextVar[str | None] = ContextVar("case_id", default=None)
 _names: ContextVar[tuple[str, ...]] = ContextVar("names", default=())
@@ -35,7 +35,7 @@ class JsonFormatter(logging.Formatter):
         }
         for key, value in vars(record).items():
             if key not in _RESERVED:
-                payload[key] = mask_text(value, names) if isinstance(value, str) else value
+                payload[key] = mask_value(value, names)
         if record.exc_info:
             payload["exception"] = mask_text(self.formatException(record.exc_info), names)
         return json.dumps(payload, default=str, ensure_ascii=False)

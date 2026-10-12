@@ -6,10 +6,17 @@ Agents never import each other's internals; they exchange only these models.
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    computed_field,
+    model_validator,
+)
 
 # Money is exact in memory and a plain number in JSON, so charts need no parsing.
 Money = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
@@ -272,9 +279,22 @@ class OfficerDecision(Contract):
     officer_id: str
     outcome: Literal["approve", "decline", "refer"]
     recommended: Literal["approve", "refer", "decline"]
-    overridden: bool
     reason: str
     decided_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_derived(cls, data: Any) -> Any:
+        """Accept stored JSON, which includes the derived `overridden` field."""
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k != "overridden"}
+        return data
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overridden(self) -> bool:
+        """Derived, so an override can never be recorded as agreement."""
+        return self.outcome != self.recommended
 
 
 class Explanation(Contract):

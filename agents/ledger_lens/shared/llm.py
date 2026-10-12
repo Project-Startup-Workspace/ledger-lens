@@ -6,6 +6,7 @@ and local demos free of network calls and credentials.
 
 import hashlib
 import io
+import json
 import logging
 import time
 import wave
@@ -44,7 +45,11 @@ class Attachment:
 
 
 class LlmClient(Protocol):
-    """What agents need from a model. Implementations must enforce `schema`."""
+    """What agents need from a model. Implementations must enforce `schema`.
+
+    `schema` must be a flat wire schema (no dict fields): the Gemini Developer API
+    rejects `additionalProperties`, so shared contracts are never sent as-is.
+    """
 
     def generate(
         self,
@@ -63,9 +68,17 @@ class LlmClient(Protocol):
 
 
 def fixture_key(task: str, attachments: Sequence[Attachment], prompt: str) -> str:
-    """Name of the recorded response for a call: by attachment when there is one, else prompt."""
-    material = attachments[0].sha256 if attachments else hashlib.sha256(prompt.encode()).hexdigest()
-    return f"{task}-{material[:16]}"
+    """Name of the recorded response for a call.
+
+    Calls with attachments are keyed on the attachments alone, so editing a prompt does
+    not invalidate every recorded page; text-only calls are keyed on the prompt.
+    """
+    digest = hashlib.sha256()
+    for item in attachments:
+        digest.update(item.sha256.encode())
+    if not attachments:
+        digest.update(prompt.encode())
+    return f"{task}-{digest.hexdigest()[:16]}"
 
 
 class OfflineLlm:
@@ -128,6 +141,8 @@ class GeminiLlm:
         attachments: Sequence[Attachment] = (),
     ) -> T:
         types = self._types
+        if "additionalProperties" in json.dumps(schema.model_json_schema()):
+            raise TypeError(f"{schema.__name__} has dict fields; send a flat wire schema")
         contents: list[object] = [
             types.Part.from_bytes(data=a.data, mime_type=a.mime_type) for a in attachments
         ]
@@ -180,12 +195,26 @@ class GeminiLlm:
         for attempt in range(1, attempts + 1):
             try:
                 return call()
-            except Exception as exc:  # the SDK raises transport and API errors of many types
-                log.warning("llm call failed", extra={"task": task, "attempt": attempt})
-                if attempt == attempts:
-                    raise LlmError(f"{task} failed after {attempts} attempts: {exc}") from exc
+            except Exception as exc:
+                retry = _is_transient(exc) and attempt < attempts
+                log.warning(
+                    "llm call failed", extra={"task": task, "attempt": attempt, "retry": retry}
+                )
+                if not retry:
+                    raise LlmError(f"{task} failed after {attempt} attempt(s): {exc}") from exc
                 time.sleep(1.5 * attempt)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable: attempts is at least 1")
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Retry timeouts, rate limits, server errors and malformed output; not bad requests."""
+    from google.genai import errors
+
+    if isinstance(exc, errors.APIError):
+        return exc.code == 429 or exc.code >= 500
+    if isinstance(exc, ValidationError):
+        return True  # sampling can produce invalid JSON once and valid JSON the next time
+    return isinstance(exc, TimeoutError | ConnectionError) or "Timeout" in type(exc).__name__
 
 
 def pcm_to_wav(pcm: bytes, sample_rate: int = TTS_SAMPLE_RATE) -> bytes:

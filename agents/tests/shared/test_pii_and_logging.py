@@ -6,7 +6,7 @@ import logging
 import pytest
 
 from ledger_lens.shared.logs import JsonFormatter, case_context
-from ledger_lens.shared.pii import mask_text, pseudonym
+from ledger_lens.shared.pii import mask_text, mask_value, pseudonym
 
 
 @pytest.mark.parametrize(
@@ -47,3 +47,25 @@ def test_json_formatter_adds_case_id_and_masks_extras() -> None:
     assert line["case_id"] == "case_1"
     assert "Siti" not in line["message"]
     assert line["phone"] == "[phone]"
+
+
+@pytest.mark.parametrize(
+    "phone",
+    ["+91 98765 43210", "+65 9123 4567", "+62 812-3456-7890", "9876543210", "9123 4567"],
+)
+def test_mask_text_hides_regional_phone_formats(phone: str) -> None:
+    assert mask_text(f"call {phone} now") == "call [phone] now"
+
+
+@pytest.mark.parametrize("national_id", ["1234 5678 9012", "s1234567d", "3174-0123-4567-8901"])
+def test_mask_text_hides_grouped_and_lowercase_ids(national_id: str) -> None:
+    assert national_id not in mask_text(f"id {national_id}")
+
+
+def test_mask_value_masks_nested_structures() -> None:
+    masked = mask_value({"applicant": {"phone": "0771234567", "ids": ["912345678V"]}, "n": 3})
+    assert masked == {"applicant": {"phone": "[phone]", "ids": ["[nic]"]}, "n": 3}
+
+
+def test_mask_value_masks_numeric_phone() -> None:
+    assert mask_value(9876543210) == "[phone]"

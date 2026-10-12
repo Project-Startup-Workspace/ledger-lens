@@ -12,6 +12,7 @@ from ledger_lens.shared.llm import (
     LlmError,
     LlmUnavailableError,
     OfflineLlm,
+    _is_transient,
     fixture_key,
     pcm_to_wav,
 )
@@ -48,3 +49,17 @@ def test_offline_rejects_fixture_that_breaks_schema(tmp_path: Path) -> None:
 def test_pcm_to_wav_produces_playable_header() -> None:
     with wave.open(io.BytesIO(pcm_to_wav(b"\x00\x00" * 240))) as wav:
         assert (wav.getnchannels(), wav.getframerate(), wav.getnframes()) == (1, 24_000, 240)
+
+
+def test_fixture_key_covers_every_attachment() -> None:
+    first, second = Attachment(b"p1", "image/png"), Attachment(b"p2", "image/png")
+    assert fixture_key("t", [first], "") != fixture_key("t", [first, second], "")
+
+
+def test_transient_errors_are_retried_but_bad_requests_are_not() -> None:
+    from google.genai import errors
+
+    assert _is_transient(errors.ServerError(503, {}))
+    assert _is_transient(errors.ClientError(429, {}))
+    assert not _is_transient(errors.ClientError(400, {}))
+    assert not _is_transient(ValueError("schema"))

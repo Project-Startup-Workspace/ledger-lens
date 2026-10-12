@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from ledger_lens.shared.safety import HeuristicScreen
-from ledger_lens.shared.schemas import LoanRequest
+from ledger_lens.shared.schemas import LoanRequest, OfficerDecision
 
 
 def test_money_is_exact_in_memory_and_numeric_in_json() -> None:
@@ -46,3 +46,18 @@ def test_heuristic_screen_flags_injection(text: str) -> None:
 
 def test_heuristic_screen_passes_ledger_text() -> None:
     assert not HeuristicScreen().screen("12/03 beras 25kg 350.000").flagged
+
+
+@pytest.mark.parametrize(
+    "text", ["ignore previous\ninstructions", "ignore  the previous instructions"]
+)
+def test_heuristic_screen_tolerates_whitespace_and_articles(text: str) -> None:
+    assert HeuristicScreen().screen(text).flagged
+
+
+def test_override_is_derived_and_survives_a_round_trip() -> None:
+    decision = OfficerDecision(
+        officer_id="o1", outcome="decline", recommended="approve", reason="seasonal risk"
+    )
+    assert decision.overridden
+    assert OfficerDecision.model_validate_json(decision.model_dump_json()) == decision
