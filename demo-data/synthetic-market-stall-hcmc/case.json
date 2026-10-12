@@ -12,10 +12,10 @@
     "guarantor_name": "Tran Van Hung"
   },
   "loan": {
-    "amount": 30000000,
+    "amount": 120000000,
     "currency": "VND",
     "tenor_months": 9,
     "annual_rate_pct": 30,
-    "purpose": "Cold storage boxes"
+    "purpose": "Cold storage boxes and a second stall"
   }
 }
