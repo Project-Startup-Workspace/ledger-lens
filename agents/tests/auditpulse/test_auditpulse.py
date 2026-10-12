@@ -257,7 +257,7 @@ def test_model_record_reads_the_active_artifact(settings: Settings, tmp_path) ->
     version = json.loads(active.read_text())["version"]
     record = model_record(active, version)
     assert record and record.validation_auc and not record.bias_report
-    bias_report_path(active).write_text("{}")
+    bias_report_path(active).write_text('{"four_fifths_ratio": 0.97}')
     assert model_record(active, version).bias_report  # type: ignore[union-attr]
     assert model_record(active, "older-version").validation_auc is None  # type: ignore[union-attr]
 

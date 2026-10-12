@@ -316,10 +316,13 @@ class CaseStatus(StrEnum):
     DECIDED = "decided"
 
 
+CaseId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+
+
 class CreditFile(Contract):
     """The full case: inputs, every agent's output and the officer's decision."""
 
-    case_id: str = Field(default_factory=lambda: new_id("case"))
+    case_id: CaseId = Field(default_factory=lambda: new_id("case"))
     status: CaseStatus = CaseStatus.DRAFT
     created_at: datetime = Field(default_factory=utc_now)
     jurisdiction: JurisdictionCode

@@ -5,13 +5,15 @@ any past event breaks every hash after it. Anyone holding the events can verify 
 chain without trusting the system that produced it.
 """
 
+import fcntl
 import hashlib
 import json
-import threading
+import os
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +21,8 @@ from ledger_lens.shared.pii import mask_value
 from ledger_lens.shared.schemas import utc_now
 
 GENESIS = "0" * 64
+_CASE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_TAIL_BYTES = 64 * 1024  # events are small; a payload this large is a bug
 
 
 def canonical_json(value: Any) -> bytes:
@@ -92,39 +96,71 @@ class AuditStore(Protocol):
 
 
 class JsonlAuditStore:
-    """Append-only JSON Lines file per case. Used locally and in tests."""
+    """Append-only JSON Lines file per case, for local use and tests.
+
+    An exclusive file lock serialises appends across threads and processes. Only
+    newline-terminated lines count as committed; a torn tail left by a crash is moved
+    to a `.torn` file for inspection and the chain continues from the last good event.
+    """
 
     def __init__(self, root: Path) -> None:
         self._root = root
         self._root.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
 
     def append(
         self, case_id: str, event_type: str, actor: str, payload: dict[str, Any]
     ) -> AuditEvent:
-        with self._lock:
-            existing = self.events(case_id)
-            event = seal(
-                seq=len(existing),
-                case_id=case_id,
-                event_type=event_type,
-                actor=actor,
-                at=utc_now(),
-                payload=mask_value(payload),
-                prev_hash=existing[-1].hash if existing else GENESIS,
-            )
-            with self._path(case_id).open("a", encoding="utf-8") as fh:
-                fh.write(event.model_dump_json() + "\n")
-            return event
+        path = self._path(case_id)
+        with path.open("a+b") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                last = self._last_committed(fh, path)
+                event = seal(
+                    seq=last.seq + 1 if last else 0,
+                    case_id=case_id,
+                    event_type=event_type,
+                    actor=actor,
+                    at=utc_now(),
+                    payload=mask_value(payload),
+                    prev_hash=last.hash if last else GENESIS,
+                )
+                fh.write(event.model_dump_json().encode() + b"\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        return event
 
     def events(self, case_id: str) -> list[AuditEvent]:
         path = self._path(case_id)
         if not path.exists():
             return []
-        lines = path.read_text(encoding="utf-8").splitlines()
-        return [AuditEvent.model_validate_json(line) for line in lines if line]
+        data = path.read_bytes()
+        committed = data[: data.rfind(b"\n") + 1]
+        return [AuditEvent.model_validate_json(line) for line in committed.splitlines() if line]
+
+    def _last_committed(self, fh: BinaryIO, path: Path) -> AuditEvent | None:
+        """Read only the final committed line, truncating any torn tail first."""
+        size = fh.seek(0, os.SEEK_END)
+        if size == 0:
+            return None
+        fh.seek(max(0, size - _TAIL_BYTES))
+        tail = fh.read()
+        end = tail.rfind(b"\n")
+        if end != len(tail) - 1:  # torn write: keep it aside, never in the chain
+            torn = tail[end + 1 :]
+            with path.with_suffix(".torn").open("ab") as quarantine:
+                quarantine.write(torn + b"\n")
+            fh.truncate(size - len(torn))
+            tail = tail[: end + 1]
+        if not tail.strip():
+            return None
+        start = tail.rfind(b"\n", 0, len(tail) - 1) + 1
+        if start == 0 and size > _TAIL_BYTES:
+            raise ValueError(f"last audit event in {path.name} exceeds {_TAIL_BYTES} bytes")
+        return AuditEvent.model_validate_json(tail[start:])
 
     def _path(self, case_id: str) -> Path:
-        if not case_id.replace("_", "").isalnum():
+        if not _CASE_ID.fullmatch(case_id):
             raise ValueError(f"invalid case id {case_id!r}")
         return self._root / f"{case_id}.jsonl"

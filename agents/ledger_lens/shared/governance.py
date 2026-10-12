@@ -5,6 +5,7 @@ Read straight from the artifact JSON, so no agent needs another agent's internal
 
 import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -29,13 +30,26 @@ def model_record(active_artifact: Path, version: str | None) -> ModelRecord | No
     if not version:
         return None
     for path in (active_artifact, active_artifact.parent / f"{version}.json"):
-        if not path.exists():
-            continue
-        artifact = json.loads(path.read_text(encoding="utf-8"))
+        artifact = _read_json(path)
         if artifact.get("version") == version:
+            metrics = artifact.get("metrics")
+            auc = metrics.get("holdout_auc") if isinstance(metrics, dict) else None
             return ModelRecord(
                 version=version,
-                validation_auc=artifact.get("metrics", {}).get("holdout_auc"),
-                bias_report=bias_report_path(path).exists(),
+                validation_auc=auc if _is_auc(auc) else None,
+                bias_report=bool(_read_json(bias_report_path(path))),
             )
     return ModelRecord(version=version, validation_auc=None, bias_report=False)
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    """A JSON object from `path`, or {} when it is missing or malformed."""
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _is_auc(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and 0 < value <= 1
