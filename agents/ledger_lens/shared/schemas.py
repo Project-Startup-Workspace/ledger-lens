@@ -144,6 +144,8 @@ class ConsistencyFlag(Contract):
 
 
 class ConsistencyReport(Contract):
+    # insufficient_data: no statement, or too few overlapping weeks to set a baseline
+    status: Literal["compared", "insufficient_data"]
     weeks_compared: int
     baseline_ratio: float | None
     flags: list[ConsistencyFlag]
