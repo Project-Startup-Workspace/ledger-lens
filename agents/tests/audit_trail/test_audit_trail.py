@@ -120,7 +120,7 @@ def zipped(files: dict[str, bytes]) -> bytes:
 
 @pytest.fixture
 def pack(store: JsonlAuditStore, signer: LocalKeySigner) -> bytes:
-    return build_pack(make_case(), store.events(CASE), [], {"version": "v"}, signer)
+    return build_pack(make_case(), store.events(CASE), [], {"version": "v"}, "# report", signer)
 
 
 def test_pack_verifies_against_the_lender_key(pack: bytes, signer: LocalKeySigner) -> None:
@@ -185,9 +185,9 @@ def test_build_refuses_other_cases_events_and_broken_chains(
 ) -> None:
     events = store.events(CASE)
     with pytest.raises(AuditPackError, match="another case"):
-        build_pack(make_case("case-2"), events, [], None, signer)
+        build_pack(make_case("case-2"), events, [], None, "", signer)
     with pytest.raises(AuditPackError, match="broken chain"):
-        build_pack(make_case(), [events[0], events[2]], [], None, signer)
+        build_pack(make_case(), [events[0], events[2]], [], None, "", signer)
 
 
 def test_snapshot_hash_changes_with_the_case() -> None:

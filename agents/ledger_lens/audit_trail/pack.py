@@ -1,8 +1,8 @@
 """Audit pack: one zip a regulator can verify offline.
 
-Contents: the credit file, its hash-chained events, the compliance reports, the model
-card, a manifest of SHA-256 hashes, and the lender's Ed25519 signature over the
-manifest. `verify_pack` checks all of them; given the lender's public key it also
+Contents: the credit file, the officer report, its hash-chained events, the compliance
+reports, the model card, a manifest of SHA-256 hashes, and the lender's Ed25519
+signature over the manifest. `verify_pack` checks all of them; given the lender's public key it also
 proves the pack came from the lender rather than being rebuilt by someone else.
 """
 
@@ -22,7 +22,14 @@ MANIFEST = "manifest.json"
 SIGNATURE = "manifest.sig"
 PUBLIC_KEY = "signing-key.pub.pem"
 EVENTS = "audit_events.jsonl"
-CONTENT_FILES = ("credit_file.json", EVENTS, "compliance.json", "model_card.json", "README.txt")
+CONTENT_FILES = (
+    "credit_file.json",
+    "officer_report.md",
+    EVENTS,
+    "compliance.json",
+    "model_card.json",
+    "README.txt",
+)
 README = """Ledger Lens audit pack
 
 manifest.json lists the SHA-256 of every content file and the head of the event chain.
@@ -43,6 +50,7 @@ def build_pack(
     events: list[AuditEvent],
     compliance: list[ComplianceReport],
     model_card: dict[str, Any] | None,
+    officer_report: str,
     signer: Signer,
 ) -> bytes:
     """Write the signed audit pack zip and return its bytes."""
@@ -54,6 +62,7 @@ def build_pack(
 
     files: dict[str, bytes] = {
         "credit_file.json": case.model_dump_json(indent=2).encode(),
+        "officer_report.md": officer_report.encode(),
         EVENTS: "".join(e.model_dump_json() + "\n" for e in events).encode(),
         "compliance.json": json.dumps(
             [r.model_dump(mode="json") for r in compliance], indent=2
