@@ -1,0 +1,46 @@
+{
+  "version": "risk-local-v1",
+  "features": [
+    "debt_service_coverage",
+    "sales_volatility",
+    "weeks_of_records",
+    "years_in_business",
+    "wallet_verified",
+    "mismatch_share",
+    "expense_ratio"
+  ],
+  "means": [
+    1.818905,
+    0.411329,
+    26.922708,
+    5.002667,
+    0.55625,
+    0.125598,
+    0.711714
+  ],
+  "scales": [
+    0.992972,
+    0.222752,
+    14.836823,
+    4.939339,
+    0.496826,
+    0.081739,
+    0.15389
+  ],
+  "coefficients": [
+    -0.817121,
+    0.387596,
+    -0.3961,
+    -0.339736,
+    -0.23783,
+    0.319652,
+    0.260804
+  ],
+  "intercept": -1.861042,
+  "trained_on": "6000 synthetic applicants, seed 20261012",
+  "metrics": {
+    "holdout_auc": 0.8197,
+    "default_rate": 0.1848
+  },
+  "illustrative": true
+}

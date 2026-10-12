@@ -54,9 +54,8 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 90.0
     llm_retries: int = Field(default=1, ge=0)
 
-    # Backends for storage, risk scoring, safety screening and regulation retrieval
+    # Backends for storage, safety screening and regulation retrieval
     storage_backend: Backend = Backend.LOCAL
-    risk_backend: Backend = Backend.LOCAL
     safety_backend: Backend = Backend.LOCAL
     retrieval_backend: Backend = Backend.LOCAL
     data_dir: Path = REPO_ROOT / ".data"
@@ -68,6 +67,8 @@ class Settings(BaseSettings):
 
     # Domain thresholds
     rule_packs_dir: Path = REPO_ROOT / "rule-packs"
+    # Local training writes risk-local-v1; `ml/` explains how to export a BigQuery ML model.
+    risk_model_path: Path = REPO_ROOT / "ml" / "artifacts" / "risk-local-v1.json"
     fixtures_dir: Path = REPO_ROOT / "demo-data" / "fixtures"
     min_extraction_confidence: float = Field(default=0.6, ge=0, le=1)
     consistency_tolerance: float = Field(default=0.35, ge=0, le=1)

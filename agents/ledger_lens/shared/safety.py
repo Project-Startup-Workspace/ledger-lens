@@ -51,7 +51,7 @@ class ModelArmorScreen:
     """Model Armor prompt sanitisation, with the heuristic screen as a fallback layer."""
 
     def __init__(self, settings: Settings) -> None:
-        from google.cloud import modelarmor_v1
+        import google.cloud.modelarmor_v1 as modelarmor_v1
 
         self._modelarmor = modelarmor_v1
         self._client = modelarmor_v1.ModelArmorClient(
