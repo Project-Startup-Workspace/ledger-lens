@@ -77,3 +77,5 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+# ADK labels its A2A support experimental on every call; the notice adds nothing to test output.
+filterwarnings = ["ignore:\\[EXPERIMENTAL\\]:UserWarning"]
