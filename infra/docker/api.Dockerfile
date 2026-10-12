@@ -21,9 +21,12 @@ COPY agents/ledger_lens agents/ledger_lens
 COPY rule-packs rule-packs
 COPY ml/artifacts ml/artifacts
 COPY demo-data demo-data
-RUN cd agents && uv sync --locked --no-dev --extra gcp --extra agents \
-    && useradd --uid 10001 --no-create-home app \
-    && mkdir -p .data && chown app .data
+RUN cd agents && uv sync --locked --no-dev --extra gcp --extra agents
+
+# Local-backend data (compose volume). Cloud deployments keep state in Firestore,
+# Cloud Storage and KMS, never on the container disk.
+RUN useradd --uid 10001 --no-create-home app \
+    && mkdir -p /app/.data && chown app /app/.data
 
 USER app
 EXPOSE 8080

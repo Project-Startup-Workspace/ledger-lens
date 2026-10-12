@@ -18,6 +18,7 @@ services:
 
   web:
     build: { context: ., dockerfile: infra/docker/web.Dockerfile }
+    env_file: { path: .env, required: false } # LL_API_TOKEN, LL_WEB_USERS
     environment:
       LL_API_URL: http://api:8080
     ports: ["3000:3000"]

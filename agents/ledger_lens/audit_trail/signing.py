@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from ledger_lens.shared.config import Settings
+from ledger_lens.shared.config import Backend, Settings
 
 
 class Signer(Protocol):
@@ -89,6 +89,10 @@ def verify_signature(public_key_pem: bytes, data: bytes, signature_b64: str) -> 
 
 
 def build_signer(settings: Settings) -> Signer:
+    """KMS when configured. A cloud deployment without it is a config error: a local key
+    on an ephemeral container disk would be lost, leaving signed packs unverifiable."""
     if settings.audit_kms_key:
         return KmsSigner(settings.audit_kms_key)
+    if settings.storage_backend is Backend.GCP:
+        raise ValueError("LL_AUDIT_KMS_KEY is required when storage is gcp")
     return LocalKeySigner(settings.data_dir / "keys" / "audit-signing-ed25519.pem")

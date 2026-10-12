@@ -1,5 +1,5 @@
 .git
-.data
+**/.data
 **/node_modules
 **/.next
 **/.venv
@@ -7,5 +7,5 @@
 **/.pytest_cache
 **/.mypy_cache
 **/.ruff_cache
-.env
-.env.*
+**/.env
+**/.env.*

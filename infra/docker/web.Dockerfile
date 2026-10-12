@@ -10,9 +10,11 @@ RUN npm run build
 FROM node:24-alpine
 WORKDIR /web
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-# Standalone output carries only the files the server needs.
-COPY --from=build /web/.next/standalone ./
-COPY --from=build /web/.next/static ./.next/static
+# Standalone output carries only the files the server needs. Owned by `node` so the
+# server can write its cache under .next/cache.
+COPY --from=build --chown=node:node /web/.next/standalone ./
+COPY --from=build --chown=node:node /web/.next/static ./.next/static
+RUN mkdir -p .next/cache && chown node:node .next/cache
 USER node
 EXPOSE 3000
 CMD ["node", "server.js"]

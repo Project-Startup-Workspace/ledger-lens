@@ -37,10 +37,13 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
 3. Create the API token secret:
 
    ```bash
-   openssl rand -hex 32 | gcloud secrets create ll-api-token --data-file=- --project ledger-lens-dev
-   gcloud secrets add-iam-policy-binding ll-api-token --project ledger-lens-dev \
-     --member serviceAccount:ledger-lens-runtime@ledger-lens-dev.iam.gserviceaccount.com \
-     --role roles/secretmanager.secretAccessor
+   # tr strips the newline, which would otherwise become part of the token
+   openssl rand -hex 32 | tr -d '\n' | gcloud secrets create ll-api-token --data-file=- --project ledger-lens-dev
+   for sa in ledger-lens-runtime ledger-lens-web; do
+     gcloud secrets add-iam-policy-binding ll-api-token --project ledger-lens-dev \
+       --member serviceAccount:$sa@ledger-lens-dev.iam.gserviceaccount.com \
+       --role roles/secretmanager.secretAccessor
+   done
    ```
 
 4. Create the web sign-in users (one `name:password` per officer, comma separated):
@@ -48,14 +51,16 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
    ```bash
    printf 'priya:CHANGE-ME,ravi:CHANGE-ME' | gcloud secrets create ll-web-users --data-file=- --project ledger-lens-dev
    gcloud secrets add-iam-policy-binding ll-web-users --project ledger-lens-dev \
-     --member serviceAccount:ledger-lens-runtime@ledger-lens-dev.iam.gserviceaccount.com \
+     --member serviceAccount:ledger-lens-web@ledger-lens-dev.iam.gserviceaccount.com \
      --role roles/secretmanager.secretAccessor
    ```
 
    For production, put the web app behind Identity-Aware Proxy instead and leave `LL_WEB_USERS` unset.
 
 5. Optional: create a Model Armor template and a RAG Engine corpus with the regulator PDFs, then set `LL_MODEL_ARMOR_TEMPLATE`, `LL_RAG_CORPUS` and the matching `*_BACKEND=gcp` settings.
-6. Merge `dev` into `main`. `.github/workflows/deploy.yml` builds, pushes and deploys all three services.
+6. Merge `dev` into `main`. Once CI passes on `main`, `.github/workflows/deploy.yml` builds, pushes and deploys all three services.
+
+Service accounts: `ledger-lens-runtime` (API, A2A) holds data, model and signing roles; `ledger-lens-web` (the internet-facing web app) can only read its two secrets.
 
 Access: the web app signs officers in; the API admits traffic at the Cloud Run layer and requires the shared token itself (Cloud Run IAM would otherwise claim the same `Authorization` header); the A2A service requires Google identity tokens.
 

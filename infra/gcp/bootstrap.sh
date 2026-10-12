@@ -16,6 +16,7 @@ KEYRING="ledger-lens"
 KEY="audit-signing"
 RUNTIME_SA="ledger-lens-runtime@${PROJECT}.iam.gserviceaccount.com"
 DEPLOY_SA="ledger-lens-deploy@${PROJECT}.iam.gserviceaccount.com"
+WEB_SA="ledger-lens-web@${PROJECT}.iam.gserviceaccount.com"  # secrets only
 
 g() { gcloud --project="$PROJECT" "$@"; }
 exists() { "$@" >/dev/null 2>&1; }
@@ -58,7 +59,7 @@ exists bq --project_id="$PROJECT" show ledger_lens ||
   bq --project_id="$PROJECT" mk --dataset --location="$REGION" ledger_lens
 
 step "Service accounts"
-for sa in ledger-lens-runtime ledger-lens-deploy; do
+for sa in ledger-lens-runtime ledger-lens-web ledger-lens-deploy; do
   exists g iam service-accounts describe "${sa}@${PROJECT}.iam.gserviceaccount.com" ||
     g iam service-accounts create "$sa" --display-name="$sa"
 done
@@ -82,8 +83,10 @@ for role in roles/run.admin roles/artifactregistry.writer roles/aiplatform.user;
   g projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$DEPLOY_SA" \
     --role="$role" --condition=None >/dev/null
 done
-g iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
-  --member="serviceAccount:$DEPLOY_SA" --role=roles/iam.serviceAccountUser >/dev/null
+for sa in "$RUNTIME_SA" "$WEB_SA"; do
+  g iam service-accounts add-iam-policy-binding "$sa" \
+    --member="serviceAccount:$DEPLOY_SA" --role=roles/iam.serviceAccountUser >/dev/null
+done
 
 step "Keyless GitHub deploys (Workload Identity Federation)"
 PROJECT_NUMBER="$(g projects describe "$PROJECT" --format='value(projectNumber)')"
@@ -105,6 +108,7 @@ Done. Set these GitHub repository variables (Settings → Secrets and variables 
   WIF_PROVIDER    = projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/providers/github
   DEPLOY_SA       = $DEPLOY_SA
   RUNTIME_SA      = $RUNTIME_SA
+  WEB_SA          = $WEB_SA
   EVIDENCE_BUCKET = $EVIDENCE_BUCKET
   AUDIT_BUCKET    = $AUDIT_BUCKET
   AUDIT_KMS_KEY   = projects/$PROJECT/locations/$REGION/keyRings/$KEYRING/cryptoKeys/$KEY/cryptoKeyVersions/1

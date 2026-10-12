@@ -1,9 +1,11 @@
 name: Deploy
 
-# Every merge to main deploys the dev environment. The job is skipped until the GCP
-# repository variables from infra/gcp/bootstrap.sh are set.
+# Deploys the dev environment after CI passes on main. Skipped until the GCP repository
+# variables printed by infra/gcp/bootstrap.sh are set.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -17,53 +19,71 @@ concurrency:
 
 jobs:
   deploy:
-    if: vars.WIF_PROVIDER != ''
+    if: >
+      vars.WIF_PROVIDER != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     env:
+      REGION: ${{ vars.GCP_REGION }}
       REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/ledger-lens
-      TAG: ${{ github.sha }}
+      TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }} # exactly the commit CI tested
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v3
-      - run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+      - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Build and push images
-        run: |
-          docker build -f infra/docker/api.Dockerfile -t "$REGISTRY/api:$TAG" .
-          docker build -f infra/docker/web.Dockerfile -t "$REGISTRY/web:$TAG" .
-          docker push "$REGISTRY/api:$TAG"
-          docker push "$REGISTRY/web:$TAG"
+      - name: Build and push the API image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/api:${{ env.TAG }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build and push the web image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/web:${{ env.TAG }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
 
       # The API is open at the Cloud Run layer because Cloud Run IAM would claim the same
       # Authorization header; the app itself requires LL_API_TOKEN on every call but /health.
       - name: Deploy API
         run: >
           gcloud run deploy ledger-lens-api --image "$REGISTRY/api:$TAG"
-          --region "${{ vars.GCP_REGION }}" --service-account "${{ vars.RUNTIME_SA }}"
+          --region "$REGION" --service-account "${{ vars.RUNTIME_SA }}"
           --allow-unauthenticated --memory 1Gi --timeout 300
-          --set-env-vars "LL_LLM_PROVIDER=vertex,LL_GCP_PROJECT=${{ vars.GCP_PROJECT }},LL_GCP_REGION=${{ vars.GCP_REGION }},LL_STORAGE_BACKEND=gcp,LL_EVIDENCE_BUCKET=${{ vars.EVIDENCE_BUCKET }},LL_AUDIT_BUCKET=${{ vars.AUDIT_BUCKET }},LL_AUDIT_KMS_KEY=${{ vars.AUDIT_KMS_KEY }}"
+          --set-env-vars "LL_LLM_PROVIDER=vertex,LL_GCP_PROJECT=${{ vars.GCP_PROJECT }},LL_GCP_REGION=$REGION,LL_STORAGE_BACKEND=gcp,LL_EVIDENCE_BUCKET=${{ vars.EVIDENCE_BUCKET }},LL_AUDIT_BUCKET=${{ vars.AUDIT_BUCKET }},LL_AUDIT_KMS_KEY=${{ vars.AUDIT_KMS_KEY }}"
           --set-secrets "LL_API_TOKEN=ll-api-token:latest"
 
-      # Callers authenticate with Google identity tokens (Cloud Run IAM).
+      # Callers authenticate with Google identity tokens (Cloud Run IAM). Cloud Run URLs are
+      # deterministic, so the agent card gets its public URL in the same deploy.
       - name: Deploy AuditPulse A2A
         run: |
+          NUMBER="$(gcloud projects describe "${{ vars.GCP_PROJECT }}" --format 'value(projectNumber)')"
           gcloud run deploy ledger-lens-a2a --image "$REGISTRY/api:$TAG" \
-            --region "${{ vars.GCP_REGION }}" --service-account "${{ vars.RUNTIME_SA }}" \
+            --region "$REGION" --service-account "${{ vars.RUNTIME_SA }}" \
             --no-allow-unauthenticated \
+            --set-env-vars "LL_A2A_PUBLIC_URL=https://ledger-lens-a2a-$NUMBER.$REGION.run.app,LL_GCP_PROJECT=${{ vars.GCP_PROJECT }}" \
             --command sh --args "-c,uvicorn ledger_lens.a2a_server:app --host 0.0.0.0 --port \$PORT"
-          URL="$(gcloud run services describe ledger-lens-a2a --region "${{ vars.GCP_REGION }}" --format 'value(status.url)')"
-          gcloud run services update ledger-lens-a2a --region "${{ vars.GCP_REGION }}" \
-            --update-env-vars "LL_A2A_PUBLIC_URL=$URL"
 
       - name: Deploy web
         run: |
-          API_URL="$(gcloud run services describe ledger-lens-api --region "${{ vars.GCP_REGION }}" --format 'value(status.url)')"
+          API_URL="$(gcloud run services describe ledger-lens-api --region "$REGION" --format 'value(status.url)')"
           gcloud run deploy ledger-lens-web --image "$REGISTRY/web:$TAG" \
-            --region "${{ vars.GCP_REGION }}" --service-account "${{ vars.RUNTIME_SA }}" \
+            --region "$REGION" --service-account "${{ vars.WEB_SA }}" \
             --allow-unauthenticated \
             --set-env-vars "LL_API_URL=$API_URL" \
             --set-secrets "LL_API_TOKEN=ll-api-token:latest,LL_WEB_USERS=ll-web-users:latest"
