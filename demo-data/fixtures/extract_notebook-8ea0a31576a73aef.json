@@ -1,0 +1,291 @@
+{
+  "script": "Sinhala",
+  "language": "si",
+  "currency": "LKR",
+  "entries": [
+    {
+      "date": "2026-09-11",
+      "description": "විකුණුම්",
+      "amount": 15000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        143,
+        599,
+        164,
+        694
+      ],
+      "raw_text": "11/09 විකුණුම් 15000"
+    },
+    {
+      "date": "2026-09-11",
+      "description": "බඩු මිලදී ගැනීම",
+      "amount": 48000.0,
+      "direction": "out",
+      "confidence": 0.88,
+      "box_2d": [
+        181,
+        801,
+        202,
+        901
+      ],
+      "raw_text": "11/09 බඩු මිලදී ගැනීම 48000"
+    },
+    {
+      "date": "2026-09-12",
+      "description": "විකුණුම්",
+      "amount": 51000.0,
+      "direction": "in",
+      "confidence": 0.42,
+      "box_2d": [
+        223,
+        598,
+        244,
+        693
+      ],
+      "raw_text": "12/09 විකුණුම් 15000"
+    },
+    {
+      "date": "2026-09-13",
+      "description": "විකුණුම්",
+      "amount": 15000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        260,
+        597,
+        281,
+        692
+      ],
+      "raw_text": "13/09 විකුණුම් 15000"
+    },
+    {
+      "date": "2026-09-14",
+      "description": "විකුණුම්",
+      "amount": 15000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        300,
+        606,
+        321,
+        701
+      ],
+      "raw_text": "14/09 විකුණුම් 15000"
+    },
+    {
+      "date": "2026-09-15",
+      "description": "විකුණුම්",
+      "amount": 18000.0,
+      "direction": "in",
+      "confidence": 0.96,
+      "box_2d": [
+        345,
+        598,
+        366,
+        693
+      ],
+      "raw_text": "15/09 විකුණුම් 18000"
+    },
+    {
+      "date": "2026-09-15",
+      "description": "බඩු මිලදී ගැනීම",
+      "amount": 42000.0,
+      "direction": "out",
+      "confidence": 0.87,
+      "box_2d": [
+        384,
+        797,
+        404,
+        897
+      ],
+      "raw_text": "15/09 බඩු මිලදී ගැනීම 42000"
+    },
+    {
+      "date": "2026-09-16",
+      "description": "විකුණුම්",
+      "amount": 16000.0,
+      "direction": "in",
+      "confidence": 0.95,
+      "box_2d": [
+        423,
+        600,
+        443,
+        695
+      ],
+      "raw_text": "16/09 විකුණුම් 16000"
+    },
+    {
+      "date": "2026-09-17",
+      "description": "විකුණුම්",
+      "amount": 16000.0,
+      "direction": "in",
+      "confidence": 0.98,
+      "box_2d": [
+        464,
+        603,
+        484,
+        698
+      ],
+      "raw_text": "17/09 විකුණුම් 16000"
+    },
+    {
+      "date": "2026-09-18",
+      "description": "විකුණුම්",
+      "amount": 18000.0,
+      "direction": "in",
+      "confidence": 0.92,
+      "box_2d": [
+        500,
+        599,
+        521,
+        694
+      ],
+      "raw_text": "18/09 විකුණුම් 18000"
+    },
+    {
+      "date": "2026-09-18",
+      "description": "බඩු මිලදී ගැනීම",
+      "amount": 41000.0,
+      "direction": "out",
+      "confidence": 0.96,
+      "box_2d": [
+        546,
+        794,
+        566,
+        889
+      ],
+      "raw_text": "18/09 බඩු මිලදී ගැනීම 41000"
+    },
+    {
+      "date": "2026-09-19",
+      "description": "විකුණුම්",
+      "amount": 14000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        581,
+        594,
+        601,
+        689
+      ],
+      "raw_text": "19/09 විකුණුම් 14000"
+    },
+    {
+      "date": "2026-09-20",
+      "description": "විකුණුම්",
+      "amount": 18000.0,
+      "direction": "in",
+      "confidence": 0.89,
+      "box_2d": [
+        625,
+        603,
+        646,
+        698
+      ],
+      "raw_text": "20/09 විකුණුම් 18000"
+    },
+    {
+      "date": "2026-09-21",
+      "description": "විකුණුම්",
+      "amount": 16000.0,
+      "direction": "in",
+      "confidence": 0.89,
+      "box_2d": [
+        663,
+        597,
+        683,
+        692
+      ],
+      "raw_text": "21/09 විකුණුම් 16000"
+    },
+    {
+      "date": "2026-09-22",
+      "description": "විකුණුම්",
+      "amount": 19000.0,
+      "direction": "in",
+      "confidence": 0.98,
+      "box_2d": [
+        701,
+        594,
+        721,
+        689
+      ],
+      "raw_text": "22/09 විකුණුම් 19000"
+    },
+    {
+      "date": "2026-09-22",
+      "description": "බඩු මිලදී ගැනීම",
+      "amount": 40000.0,
+      "direction": "out",
+      "confidence": 0.98,
+      "box_2d": [
+        744,
+        797,
+        764,
+        897
+      ],
+      "raw_text": "22/09 බඩු මිලදී ගැනීම 40000"
+    },
+    {
+      "date": "2026-09-23",
+      "description": "විකුණුම්",
+      "amount": 21000.0,
+      "direction": "in",
+      "confidence": 0.89,
+      "box_2d": [
+        783,
+        594,
+        803,
+        689
+      ],
+      "raw_text": "23/09 විකුණුම් 21000"
+    },
+    {
+      "date": "2026-09-24",
+      "description": "විකුණුම්",
+      "amount": 17000.0,
+      "direction": "in",
+      "confidence": 0.86,
+      "box_2d": [
+        821,
+        596,
+        841,
+        691
+      ],
+      "raw_text": "24/09 විකුණුම් 17000"
+    },
+    {
+      "date": "2026-09-25",
+      "description": "විකුණුම්",
+      "amount": 19000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        864,
+        597,
+        884,
+        692
+      ],
+      "raw_text": "25/09 විකුණුම් 19000"
+    },
+    {
+      "date": "2026-09-25",
+      "description": "බඩු මිලදී ගැනීම",
+      "amount": 48000.0,
+      "direction": "out",
+      "confidence": 0.94,
+      "box_2d": [
+        901,
+        804,
+        921,
+        904
+      ],
+      "raw_text": "25/09 බඩු මිලදී ගැනීම 48000"
+    }
+  ],
+  "other_text": "කඩේ ගිණුම් පොත — 3",
+  "warnings": [
+    "One amount is blurred by a stain."
+  ]
+}

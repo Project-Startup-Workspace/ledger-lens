@@ -1,0 +1,21 @@
+{
+  "jurisdiction": "sg",
+  "applicant": {
+    "full_name": "Nguyen Thi Lan",
+    "date_of_birth": "2001-03-09",
+    "national_id": "079301001234",
+    "phone": "+84 90 555 0199",
+    "business_name": "Sap Chi Lan",
+    "business_type": "market stall, fruit",
+    "years_in_business": 1.5,
+    "preferred_language": "vi",
+    "guarantor_name": "Tran Van Hung"
+  },
+  "loan": {
+    "amount": 30000000,
+    "currency": "VND",
+    "tenor_months": 9,
+    "annual_rate_pct": 30,
+    "purpose": "Cold storage boxes"
+  }
+}

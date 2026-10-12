@@ -143,10 +143,8 @@ class GeminiLlm:
         types = self._types
         if "additionalProperties" in json.dumps(schema.model_json_schema()):
             raise TypeError(f"{schema.__name__} has dict fields; send a flat wire schema")
-        contents: list[object] = [
-            types.Part.from_bytes(data=a.data, mime_type=a.mime_type) for a in attachments
-        ]
-        contents.append(prompt)
+        parts = [types.Part.from_bytes(data=a.data, mime_type=a.mime_type) for a in attachments]
+        contents = types.Content(role="user", parts=[*parts, types.Part.from_text(text=prompt)])
         config = types.GenerateContentConfig(
             system_instruction=system,
             response_mime_type="application/json",

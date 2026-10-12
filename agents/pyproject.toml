@@ -19,6 +19,7 @@ gcp = [
 [dependency-groups]
 dev = [
   "mypy>=1.15",
+  "pillow>=11.2",  # demo data generation only
   "pre-commit>=4.2",
   "pytest>=8.3",
   "ruff>=0.11",
@@ -41,6 +42,7 @@ ignore = ["S101"]  # assert is how pytest checks
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
+"scripts/**" = ["S311"]  # seeded randomness for reproducible synthetic data
 
 [tool.mypy]
 python_version = "3.12"
