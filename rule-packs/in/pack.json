@@ -1,7 +1,7 @@
 {
   "jurisdiction": "in",
   "name": "India",
-  "version": "2026.10.1",
+  "version": "2026.10.2",
   "last_checked": "2026-10-12",
   "review_status": "draft",
   "sources": [
@@ -34,11 +34,30 @@
       "title": "Key Fact Statement acknowledged before the contract",
       "severity": "critical",
       "stage": "post_decision",
-      "check": { "fact": "disclosure.acknowledged", "op": "true" },
+      "outcomes": [
+        "approve"
+      ],
+      "check": {
+        "all": [
+          {
+            "fact": "disclosure.acknowledged",
+            "op": "true"
+          },
+          {
+            "fact": "disclosure.acknowledged_before_decision",
+            "op": "true"
+          }
+        ]
+      },
       "on_fail": "fail",
       "pass_detail": "The borrower acknowledged the Key Fact Statement before signing.",
       "fail_detail": "The Key Fact Statement has not been acknowledged by the borrower.",
-      "cites": [{ "source": "rbi-dl-2025", "clause": "kfs" }]
+      "cites": [
+        {
+          "source": "rbi-dl-2025",
+          "clause": "kfs"
+        }
+      ]
     },
     {
       "id": "IN-APR-01",
@@ -47,26 +66,53 @@
       "stage": "pre_decision",
       "check": {
         "all": [
-          { "fact": "disclosure.apr_pct", "op": "present" },
-          { "fact": "disclosure.instalments", "op": "gte", "value": 1 },
-          { "fact": "disclosure.instalment", "op": "present" }
+          {
+            "fact": "disclosure.apr_pct",
+            "op": "present"
+          },
+          {
+            "fact": "disclosure.instalments",
+            "op": "gte",
+            "value": 1
+          },
+          {
+            "fact": "disclosure.instalment",
+            "op": "present"
+          }
         ]
       },
       "on_fail": "fail",
       "pass_detail": "APR, number of instalments and instalment amount are disclosed.",
       "fail_detail": "The offer is missing the APR, tenor or repayment amount.",
-      "cites": [{ "source": "rbi-dl-2025", "clause": "apr" }]
+      "cites": [
+        {
+          "source": "rbi-dl-2025",
+          "clause": "apr"
+        }
+      ]
     },
     {
       "id": "IN-DAT-01",
       "title": "Borrower data stored in India",
       "severity": "major",
       "stage": "pre_decision",
-      "check": { "fact": "storage.region", "op": "in", "value": ["asia-south1", "asia-south2"] },
+      "check": {
+        "fact": "storage.region",
+        "op": "in",
+        "value": [
+          "asia-south1",
+          "asia-south2"
+        ]
+      },
       "on_fail": "review",
       "pass_detail": "Case data is stored in an Indian cloud region.",
       "fail_detail": "Case data is not stored in an Indian region. Deploy an India instance before lending in India.",
-      "cites": [{ "source": "rbi-dl-2025", "clause": "data-storage" }]
+      "cites": [
+        {
+          "source": "rbi-dl-2025",
+          "clause": "data-storage"
+        }
+      ]
     }
   ]
 }

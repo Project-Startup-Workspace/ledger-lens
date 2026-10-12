@@ -12,6 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 MATCH_THRESHOLD = 0.88
+TOKEN_THRESHOLD = 0.85
 
 
 class ListedName(BaseModel):
@@ -44,11 +45,29 @@ class SanctionsScreen:
         for name in filter(None, names):
             target = normalise(name)
             for listed_norm, entry in self._normalised:
-                similarity = SequenceMatcher(None, target, listed_norm).ratio()
+                similarity = max(
+                    SequenceMatcher(None, target, listed_norm).ratio(),
+                    token_overlap(target, listed_norm),
+                )
                 if similarity >= MATCH_THRESHOLD:
-                    hits.append(
-                        ScreeningHit(
-                            screened_name=name, listed=entry, similarity=round(similarity, 3)
-                        )
+                    hit = ScreeningHit(
+                        screened_name=name, listed=entry, similarity=round(similarity, 3)
                     )
+                    hits.append(hit)
         return hits
+
+
+def token_overlap(a: str, b: str) -> float:
+    """Share of the shorter name's words found (fuzzily) in the longer name.
+
+    Catches dropped or added middle names ("Tran Hung" vs "Tran Van Hung"). Single-word
+    names are excluded: one shared word is far too weak a signal on its own.
+    """
+    short, long = sorted((a.split(), b.split()), key=len)
+    if len(short) < 2:
+        return 0.0
+    found = sum(
+        any(SequenceMatcher(None, word, other).ratio() >= TOKEN_THRESHOLD for other in long)
+        for word in short
+    )
+    return found / len(short)

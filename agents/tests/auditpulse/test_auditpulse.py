@@ -19,6 +19,8 @@ from ledger_lens.shared.schemas import (
     Applicant,
     Consent,
     CreditFile,
+    EvidenceDocument,
+    EvidenceKind,
     FindingStatus,
     LoanRequest,
     OfficerDecision,
@@ -38,8 +40,37 @@ def test_registry_loads_jurisdictions_and_common_pack() -> None:
     registry = RulePackRegistry(PACKS)
     assert {p.jurisdiction for p in registry.jurisdictions()} == {"lk", "sg", "in"}
     assert registry.common is not None
-    with pytest.raises(KeyError):
-        registry.get("xx")
+    assert registry.get("xx") is None
+    assert registry.get("LK") is registry.get("lk")
+
+
+def test_registry_rejects_pack_in_wrong_folder(tmp_path) -> None:
+    (tmp_path / "lk-2027").mkdir()
+    (tmp_path / "lk-2027" / "pack.json").write_text((PACKS / "lk" / "pack.json").read_text())
+    with pytest.raises(ValueError, match="folder"):
+        RulePackRegistry(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "check",
+    [
+        {"fact": "applicant.age", "op": "gte"},
+        {"fact": "storage.region", "op": "in", "value": "asia-south1"},
+        {"all": []},
+    ],
+)
+def test_malformed_checks_fail_at_load(check: dict) -> None:
+    data = json.loads((PACKS / "lk" / "pack.json").read_text())
+    data["rules"][0]["check"] = check
+    with pytest.raises(ValueError):
+        RulePack.model_validate(data)
+
+
+def test_rules_need_a_citation() -> None:
+    data = json.loads((PACKS / "lk" / "pack.json").read_text())
+    data["rules"][0]["cites"] = []
+    with pytest.raises(ValueError):
+        RulePack.model_validate(data)
 
 
 def test_pack_rejects_citation_to_unknown_clause() -> None:
@@ -60,11 +91,12 @@ FACTS: dict[str, Any] = {"a": {"n": 5, "flag": True, "items": [], "name": "x"}}
         ("true", "a.flag", None, True),
         ("empty", "a.items", None, True),
         ("empty", "a.missing", None, False),
+        ("empty", "a.n", None, False),  # a number is never "empty"
         ("gte", "a.n", 5, True),
         ("lt", "a.n", 5, False),
         ("gte", "a.flag", 0, False),  # booleans are not numbers
         ("in", "a.name", ["x", "y"], True),
-        ("eq", "a.missing", None, False),
+        ("eq", "a.missing", "x", False),
     ],
 )
 def test_evaluate_ops(op: str, fact: str, value: Any, expected: bool) -> None:
@@ -78,8 +110,15 @@ def test_resolve_handles_non_dict_paths() -> None:
 def test_screening_tolerates_accents_order_and_spelling() -> None:
     screen = SanctionsScreen(PACKS / "common" / "sanctions-sample.json")
     assert normalise("Trần Văn Hùng") == normalise("Hung Tran Van")
-    assert screen.screen(["Trần Văn Hùng", "Hung Tran Van", "Tran Van Hong"])
-    assert not screen.screen(["Kamala Perera", ""])
+    for name in [
+        "Trần Văn Hùng",
+        "Hung Tran Van",
+        "Tran Van Hong",
+        "Tran Hung",
+        "Hung Tran Van Minh",
+    ]:
+        assert screen.screen([name]), name
+    assert not screen.screen(["Kamala Perera", "", "Hung"])
 
 
 def test_key_fact_statement_terms() -> None:
@@ -132,7 +171,7 @@ def statuses(report) -> dict[str, FindingStatus]:
 
 def test_sri_lanka_before_decision(auditpulse: AuditPulse) -> None:
     report = auditpulse.check(make_case())
-    assert report.rule_pack_version == "common@2026.10.1+lk@2026.10.1"
+    assert report.rule_pack_version == "common@2026.10.2+lk@2026.10.2"
     assert statuses(report) == {
         "ALL-CON-01": FindingStatus.PASS,
         "ALL-SAN-01": FindingStatus.PASS,
@@ -160,14 +199,67 @@ def test_jurisdiction_switch_changes_the_checklist(auditpulse: AuditPulse) -> No
     assert india["IN-DAT-01"] is FindingStatus.REVIEW  # local storage is not in India
 
 
-def test_post_decision_rules_resolve_after_sign_off(auditpulse: AuditPulse) -> None:
-    case = make_case()
+def decide(case: CreditFile, outcome: str, acknowledged_first: bool = True) -> CreditFile:
+    acknowledged = utc_now()
     case.decision = OfficerDecision(
-        officer_id="officer-7", outcome="approve", recommended="approve", reason="Strong file"
+        officer_id="officer-7", outcome=outcome, recommended="approve", reason="Reviewed"
     )
-    case.disclosure = case.disclosure.model_copy(update={"acknowledged_at": utc_now()})  # type: ignore[union-attr]
+    if not acknowledged_first:
+        acknowledged = case.decision.decided_at + timedelta(minutes=5)
+    case.disclosure = case.disclosure.model_copy(update={"acknowledged_at": acknowledged})  # type: ignore[union-attr]
+    return case
+
+
+def test_post_decision_rules_resolve_after_approval(auditpulse: AuditPulse) -> None:
+    case = decide(make_case(), "approve")
     assert statuses(auditpulse.check(case, "in"))["IN-KFS-01"] is FindingStatus.PASS
     assert statuses(auditpulse.check(case, "lk"))["LK-DOC-01"] is FindingStatus.PASS
+
+
+def test_agreement_rules_do_not_apply_to_a_decline(auditpulse: AuditPulse) -> None:
+    case = decide(make_case(), "decline")
+    assert statuses(auditpulse.check(case, "lk"))["LK-DOC-01"] is FindingStatus.NOT_APPLICABLE
+    assert statuses(auditpulse.check(case, "sg"))["SG-HUM-01"] is FindingStatus.PASS
+
+
+def test_kfs_acknowledged_after_the_decision_fails(auditpulse: AuditPulse) -> None:
+    case = decide(make_case(), "approve", acknowledged_first=False)
+    assert statuses(auditpulse.check(case, "in"))["IN-KFS-01"] is FindingStatus.FAIL
+
+
+def test_consent_recorded_after_evidence_fails(auditpulse: AuditPulse) -> None:
+    case = make_case()
+    case.evidence = [
+        EvidenceDocument(
+            kind=EvidenceKind.NOTEBOOK,
+            filename="p.png",
+            content_type="image/png",
+            sha256="-",
+            blob_key="k",
+            uploaded_at=case.consent.recorded_at - timedelta(hours=1),
+        )
+    ]
+    assert statuses(auditpulse.check(case))["ALL-CON-01"] is FindingStatus.FAIL
+
+
+def test_unknown_jurisdiction_still_runs_common_checks(auditpulse: AuditPulse) -> None:
+    report = auditpulse.check(make_case(), "ID")
+    assert report.jurisdiction == "id"
+    assert statuses(report)["ALL-CON-01"] is FindingStatus.PASS
+    assert statuses(report)["ALL-PCK-01"] is FindingStatus.REVIEW
+
+
+def test_model_record_reads_the_active_artifact(settings: Settings, tmp_path) -> None:
+    from ledger_lens.auditpulse.facts import bias_report_path, model_record
+
+    active = tmp_path / "current.json"
+    active.write_text(settings.risk_model_path.read_text())
+    version = json.loads(active.read_text())["version"]
+    record = model_record(active, version)
+    assert record and record.validation_auc and not record.bias_report
+    bias_report_path(active).write_text("{}")
+    assert model_record(active, version).bias_report  # type: ignore[union-attr]
+    assert model_record(active, "older-version").validation_auc is None  # type: ignore[union-attr]
 
 
 def test_missing_licence_fails(auditpulse: AuditPulse, settings: Settings) -> None:

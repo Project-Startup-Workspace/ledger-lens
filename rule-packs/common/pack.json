@@ -1,7 +1,7 @@
 {
   "jurisdiction": "common",
   "name": "All markets",
-  "version": "2026.10.1",
+  "version": "2026.10.2",
   "last_checked": "2026-10-12",
   "review_status": "draft",
   "sources": [
@@ -36,22 +36,46 @@
       "title": "Applicant consent recorded before processing",
       "severity": "critical",
       "stage": "pre_decision",
-      "check": { "fact": "consent.given", "op": "true" },
+      "check": {
+        "all": [
+          {
+            "fact": "consent.given",
+            "op": "true"
+          },
+          {
+            "fact": "consent.before_evidence",
+            "op": "true"
+          }
+        ]
+      },
       "on_fail": "fail",
       "pass_detail": "Consent was recorded before any evidence was processed.",
-      "fail_detail": "No recorded consent. Stop processing and obtain consent.",
-      "cites": [{ "source": "ll-data-policy", "clause": "consent" }]
+      "fail_detail": "Consent is missing or was recorded after evidence was uploaded. Stop processing and obtain consent.",
+      "cites": [
+        {
+          "source": "ll-data-policy",
+          "clause": "consent"
+        }
+      ]
     },
     {
       "id": "ALL-SAN-01",
       "title": "Applicant and guarantor screened against sanctions lists",
       "severity": "critical",
       "stage": "pre_decision",
-      "check": { "fact": "screening.matches", "op": "empty" },
+      "check": {
+        "fact": "screening.matches",
+        "op": "empty"
+      },
       "on_fail": "review",
       "pass_detail": "No names matched the sanctions lists.",
       "fail_detail": "A name is similar to a listed person. Verify identity documents before deciding.",
-      "cites": [{ "source": "sanctions-lists", "clause": "screening" }]
+      "cites": [
+        {
+          "source": "sanctions-lists",
+          "clause": "screening"
+        }
+      ]
     }
   ]
 }

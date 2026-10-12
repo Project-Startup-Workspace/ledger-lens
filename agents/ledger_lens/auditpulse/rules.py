@@ -1,5 +1,6 @@
 """Evaluates rule checks against facts. Pure functions: same facts, same result."""
 
+from collections.abc import Sized
 from typing import Any
 
 from ledger_lens.auditpulse.packs import AllOf, Check, FactCheck
@@ -31,7 +32,7 @@ def _evaluate_fact(check: FactCheck, value: Any) -> bool:
         case "false":
             return value is False
         case "empty":
-            return value is not None and len(value) == 0
+            return isinstance(value, Sized) and len(value) == 0
         case "not_empty":
             return bool(value)
         case "eq":

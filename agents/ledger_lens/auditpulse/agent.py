@@ -45,35 +45,37 @@ class AuditPulse:
         `jurisdiction` defaults to the case's own; passing another shows how the same
         case fares under a different regulator (the demo's jurisdiction switcher).
         """
-        code = jurisdiction or case.jurisdiction
+        code = (jurisdiction or case.jurisdiction).lower()
         pack = self._packs.get(code)
         hits = self._sanctions.screen(
             [case.applicant.full_name, case.applicant.guarantor_name or ""]
         )
         record = model_record(
-            self._settings.risk_model_path.parent, case.risk.model_version if case.risk else None
+            self._settings.risk_model_path, case.risk.model_version if case.risk else None
         )
         facts = build_facts(case, code, self._settings, hits, record)
         packs = [p for p in (self._packs.common, pack) if p is not None]
-        findings = [
-            self._finding(p, rule, facts, decided=case.decision is not None)
-            for p in packs
-            for rule in p.rules
-        ]
+        outcome = case.decision.outcome if case.decision else None
+        findings = [self._finding(p, rule, facts, outcome) for p in packs for rule in p.rules]
+        if pack is None:
+            # Still run the common checks, and say plainly that local rules are missing.
+            findings.append(_missing_pack_finding(code))
         version = "+".join(f"{p.jurisdiction}@{p.version}" for p in packs)
         log.info("compliance checked", extra={"jurisdiction": code, "packs": version})
         return ComplianceReport(
             jurisdiction=code,
-            jurisdiction_name=pack.name,
+            jurisdiction_name=pack.name if pack else f"No rule pack ({code.upper()})",
             rule_pack_version=version,
             findings=findings,
         )
 
     def _finding(
-        self, pack: RulePack, rule: Rule, facts: dict[str, object], decided: bool
+        self, pack: RulePack, rule: Rule, facts: dict[str, object], outcome: str | None
     ) -> Finding:
-        if rule.stage == "post_decision" and not decided:
+        if rule.stage == "post_decision" and outcome is None:
             status, detail = FindingStatus.PENDING, "Checked once the officer records a decision."
+        elif rule.stage == "post_decision" and outcome not in rule.outcomes:
+            status, detail = FindingStatus.NOT_APPLICABLE, f"Does not apply to a {outcome}."
         elif evaluate(rule.check, facts):
             status, detail = FindingStatus.PASS, rule.pass_detail
         else:
@@ -97,3 +99,14 @@ class AuditPulse:
             url=source.url,
             excerpt=self._retriever.excerpt(source, clause),
         )
+
+
+def _missing_pack_finding(code: str) -> Finding:
+    return Finding(
+        rule_id="ALL-PCK-01",
+        title="Local lending rules are available",
+        status=FindingStatus.REVIEW,
+        severity="major",
+        detail=f"There is no rule pack for '{code}'. Local rules must be checked by hand.",
+        citations=[],
+    )

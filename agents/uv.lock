@@ -525,7 +525,6 @@ name = "ledger-lens"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "google-auth", extra = ["requests"] },
     { name = "google-genai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -533,6 +532,7 @@ dependencies = [
 
 [package.optional-dependencies]
 gcp = [
+    { name = "google-auth", extra = ["requests"] },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-modelarmor" },
 ]
@@ -550,7 +550,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "google-auth", extras = ["requests"], specifier = ">=2.38" },
+    { name = "google-auth", extras = ["requests"], marker = "extra == 'gcp'", specifier = ">=2.38" },
     { name = "google-cloud-bigquery", marker = "extra == 'gcp'", specifier = ">=3.30" },
     { name = "google-cloud-modelarmor", marker = "extra == 'gcp'", specifier = ">=0.3" },
     { name = "google-genai", specifier = ">=2.29" },
