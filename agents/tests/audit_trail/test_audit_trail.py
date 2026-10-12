@@ -120,7 +120,7 @@ def zipped(files: dict[str, bytes]) -> bytes:
 
 @pytest.fixture
 def pack(store: JsonlAuditStore, signer: LocalKeySigner) -> bytes:
-    return build_pack(make_case(), store.events(CASE), [], {"version": "v"}, signer)
+    return build_pack(make_case(), store.events(CASE), [], {"version": "v"}, "# report", signer)
 
 
 def test_pack_verifies_against_the_lender_key(pack: bytes, signer: LocalKeySigner) -> None:
@@ -185,9 +185,9 @@ def test_build_refuses_other_cases_events_and_broken_chains(
 ) -> None:
     events = store.events(CASE)
     with pytest.raises(AuditPackError, match="another case"):
-        build_pack(make_case("case-2"), events, [], None, signer)
+        build_pack(make_case("case-2"), events, [], None, "", signer)
     with pytest.raises(AuditPackError, match="broken chain"):
-        build_pack(make_case(), [events[0], events[2]], [], None, signer)
+        build_pack(make_case(), [events[0], events[2]], [], None, "", signer)
 
 
 def test_snapshot_hash_changes_with_the_case() -> None:
@@ -203,3 +203,31 @@ def test_model_card_lists_every_feature(settings: Settings) -> None:
     assert [f["name"] for f in card["features"]] == model.features
     assert card["inventory"]["version"] == model.version
     json.dumps(card)  # must be serialisable into the audit pack
+
+
+def test_format_1_packs_without_an_officer_report_still_verify(
+    store: JsonlAuditStore, signer: LocalKeySigner
+) -> None:
+    from ledger_lens.audit_trail.chain import canonical_json, sha256_hex
+
+    events = store.events(CASE)
+    files = {
+        "credit_file.json": b"{}",
+        "audit_events.jsonl": "".join(e.model_dump_json() + "\n" for e in events).encode(),
+        "compliance.json": b"[]",
+        "model_card.json": b"{}",
+        "README.txt": b"old pack",
+    }
+    manifest = canonical_json(
+        {
+            "case_id": CASE,
+            "chain": {"events": 3, "head": events[-1].hash},
+            "files": {name: sha256_hex(data) for name, data in files.items()},
+        }
+    )
+    files |= {
+        "manifest.json": manifest,
+        "manifest.sig": base64.b64encode(signer.sign(manifest)),
+        "signing-key.pub.pem": signer.public_key_pem(),
+    }
+    assert verify_pack(zipped(files), trusted_public_key=signer.public_key_pem()).valid

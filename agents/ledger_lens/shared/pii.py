@@ -15,7 +15,8 @@ from pydantic import BaseModel
 _PHONE_DIGITS = range(8, 16)
 
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("email", re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")),
+    # The TLD must be letters, so versions such as "lk@2026.10.2" are left alone.
+    ("email", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")),
     ("nric", re.compile(r"\b[STFGM]\d{7}[A-Z]\b", re.IGNORECASE)),
     ("nic", re.compile(r"\b\d{9}[VvXx]\b")),
     # New NIC and Aadhaar (12 digits), NIK (16), written solid or in groups of four.

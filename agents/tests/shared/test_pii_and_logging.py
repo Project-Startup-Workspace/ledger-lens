@@ -25,8 +25,9 @@ def test_mask_text_hides_identifiers(raw: str, hidden: str) -> None:
     assert hidden not in mask_text(raw)
 
 
-def test_mask_text_keeps_amounts() -> None:
+def test_mask_text_keeps_amounts_and_versions() -> None:
     assert mask_text("weekly sales 125000 LKR") == "weekly sales 125000 LKR"
+    assert mask_text("common@2026.10.2+lk@2026.10.2") == "common@2026.10.2+lk@2026.10.2"
 
 
 def test_mask_text_hides_known_names_case_insensitively() -> None:

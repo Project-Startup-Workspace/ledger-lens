@@ -1,8 +1,8 @@
 """Audit pack: one zip a regulator can verify offline.
 
-Contents: the credit file, its hash-chained events, the compliance reports, the model
-card, a manifest of SHA-256 hashes, and the lender's Ed25519 signature over the
-manifest. `verify_pack` checks all of them; given the lender's public key it also
+Contents: the credit file, the officer report, its hash-chained events, the compliance
+reports, the model card, a manifest of SHA-256 hashes, and the lender's Ed25519
+signature over the manifest. `verify_pack` checks all of them; given the lender's public key it also
 proves the pack came from the lender rather than being rebuilt by someone else.
 """
 
@@ -22,7 +22,21 @@ MANIFEST = "manifest.json"
 SIGNATURE = "manifest.sig"
 PUBLIC_KEY = "signing-key.pub.pem"
 EVENTS = "audit_events.jsonl"
-CONTENT_FILES = ("credit_file.json", EVENTS, "compliance.json", "model_card.json", "README.txt")
+# Content files required by each manifest format. Format 1 packs predate the officer
+# report; they must keep verifying for as long as they are retained.
+FORMAT_VERSION = 2
+FORMAT_FILES = {
+    1: ("credit_file.json", EVENTS, "compliance.json", "model_card.json", "README.txt"),
+    2: (
+        "credit_file.json",
+        "officer_report.md",
+        EVENTS,
+        "compliance.json",
+        "model_card.json",
+        "README.txt",
+    ),
+}
+CONTENT_FILES = FORMAT_FILES[FORMAT_VERSION]
 README = """Ledger Lens audit pack
 
 manifest.json lists the SHA-256 of every content file and the head of the event chain.
@@ -43,6 +57,7 @@ def build_pack(
     events: list[AuditEvent],
     compliance: list[ComplianceReport],
     model_card: dict[str, Any] | None,
+    officer_report: str,
     signer: Signer,
 ) -> bytes:
     """Write the signed audit pack zip and return its bytes."""
@@ -54,6 +69,7 @@ def build_pack(
 
     files: dict[str, bytes] = {
         "credit_file.json": case.model_dump_json(indent=2).encode(),
+        "officer_report.md": officer_report.encode(),
         EVENTS: "".join(e.model_dump_json() + "\n" for e in events).encode(),
         "compliance.json": json.dumps(
             [r.model_dump(mode="json") for r in compliance], indent=2
@@ -64,6 +80,7 @@ def build_pack(
     public_key = signer.public_key_pem()
     manifest = canonical_json(
         {
+            "format": FORMAT_VERSION,
             "case_id": case.case_id,
             "generated_at": utc_now().isoformat(),
             "chain": {"events": chain.events, "head": chain.head},
@@ -105,8 +122,7 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
         return _invalid("not a zip file")
     with archive:
         names = set(archive.namelist())
-        missing = [n for n in (MANIFEST, SIGNATURE, PUBLIC_KEY, *CONTENT_FILES) if n not in names]
-        if missing:
+        if missing := [n for n in (MANIFEST, SIGNATURE, PUBLIC_KEY) if n not in names]:
             return _invalid(f"missing files: {', '.join(missing)}")
         manifest_bytes = archive.read(MANIFEST)
         try:
@@ -114,8 +130,11 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
             listed: dict[str, str] = manifest["files"]
             head = manifest["chain"]["head"]
             case_id = manifest["case_id"]
+            required = FORMAT_FILES[manifest.get("format", 1)]
         except (ValueError, KeyError, TypeError):
-            return _invalid("manifest is not readable")
+            return _invalid("manifest is not readable or has an unknown format")
+        if missing := [n for n in required if n not in names]:
+            return _invalid(f"missing files: {', '.join(missing)}")
 
         embedded_key = archive.read(PUBLIC_KEY)
         key = trusted_public_key or embedded_key
@@ -125,11 +144,11 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
         if trusted_public_key and fingerprint(trusted_public_key) != fingerprint(embedded_key):
             problems.append("pack was signed with a different key than the trusted one")
 
-        if set(listed) != set(CONTENT_FILES):
+        if set(listed) != set(required):
             problems.append("manifest does not list exactly the required content files")
-        if extra := names - {MANIFEST, SIGNATURE, PUBLIC_KEY, *CONTENT_FILES}:
+        if extra := names - {MANIFEST, SIGNATURE, PUBLIC_KEY, *required}:
             problems.append(f"unexpected files: {', '.join(sorted(extra))}")
-        for name in CONTENT_FILES:
+        for name in required:
             if listed.get(name) != sha256_hex(archive.read(name)):
                 problems.append(f"{name}: hash does not match the manifest")
         lines = archive.read(EVENTS).decode(errors="replace").splitlines()
