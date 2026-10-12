@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from ledger_lens.evidence.tools import week_start
+from ledger_lens.shared.dates import week_start
 from ledger_lens.shared.schemas import (
     ConsistencyFlag,
     ConsistencyReport,

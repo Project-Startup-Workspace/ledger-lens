@@ -19,47 +19,12 @@
 """
 
 from datetime import date
-from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
-
 from ledger_lens.auditpulse.screening import ScreeningHit
-from ledger_lens.risk.model import LogisticModel
 from ledger_lens.shared.config import Backend, Settings
+from ledger_lens.shared.governance import ModelRecord
 from ledger_lens.shared.schemas import CreditFile
-
-
-class ModelRecord(BaseModel):
-    version: str
-    validation_auc: float | None
-    bias_report: bool
-
-
-def bias_report_path(artifact: Path) -> Path:
-    """Where the evaluation suite writes the bias test for a model artifact."""
-    return artifact.with_suffix(".bias.json")
-
-
-def model_record(active_artifact: Path, version: str | None) -> ModelRecord | None:
-    """Governance record for the model version that scored the case.
-
-    Usually that is the active artifact. A case scored by an earlier version is looked
-    up as `<version>.json` beside it; if that file is gone, the record shows no metrics.
-    """
-    if not version:
-        return None
-    candidates = [active_artifact, active_artifact.parent / f"{version}.json"]
-    for path in candidates:
-        if path.exists():
-            model = LogisticModel.load(path)
-            if model.version == version:
-                return ModelRecord(
-                    version=version,
-                    validation_auc=model.metrics.get("holdout_auc"),
-                    bias_report=bias_report_path(path).exists(),
-                )
-    return ModelRecord(version=version, validation_auc=None, bias_report=False)
 
 
 def age_on(birth: date, on: date) -> int:

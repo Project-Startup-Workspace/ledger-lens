@@ -6,12 +6,13 @@ same case always produces the same checklist (see docs/adr/0002).
 
 import logging
 
-from ledger_lens.auditpulse.facts import build_facts, model_record
+from ledger_lens.auditpulse.facts import build_facts
 from ledger_lens.auditpulse.packs import Rule, RulePack, RulePackRegistry
 from ledger_lens.auditpulse.retrieval import ClauseRetriever
 from ledger_lens.auditpulse.rules import evaluate
 from ledger_lens.auditpulse.screening import SanctionsScreen
 from ledger_lens.shared.config import Settings
+from ledger_lens.shared.governance import model_record
 from ledger_lens.shared.schemas import (
     Citation,
     ComplianceReport,
