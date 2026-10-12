@@ -5,6 +5,7 @@ so the managed runtime gets per-stage tracing while sharing the API's exact logi
 """
 
 from collections.abc import Callable
+from functools import lru_cache
 from itertools import pairwise
 
 from google.adk.workflow import START, FunctionNode, Workflow
@@ -67,8 +68,13 @@ def build_workflow(coordinator: Coordinator) -> Workflow:
     )
 
 
+@lru_cache
+def _root_agent() -> Workflow:
+    return build_workflow(Coordinator(build_services(get_settings())))
+
+
 def __getattr__(name: str) -> Workflow:
-    """ADK loads `root_agent`; build it lazily so importing this module stays cheap."""
+    """ADK loads `root_agent`; built once, lazily, so importing this module stays cheap."""
     if name == "root_agent":
-        return build_workflow(Coordinator(build_services(get_settings())))
+        return _root_agent()
     raise AttributeError(name)

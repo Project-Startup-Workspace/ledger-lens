@@ -5,6 +5,7 @@ same case always produces the same checklist (see docs/adr/0002).
 """
 
 import logging
+import re
 
 from ledger_lens.auditpulse.facts import build_facts
 from ledger_lens.auditpulse.packs import Rule, RulePack, RulePackRegistry
@@ -22,6 +23,11 @@ from ledger_lens.shared.schemas import (
 )
 
 log = logging.getLogger(__name__)
+_CODE = re.compile(r"[a-z]{2}")
+
+
+class InvalidJurisdictionError(ValueError):
+    pass
 
 
 class AuditPulse:
@@ -46,7 +52,9 @@ class AuditPulse:
         `jurisdiction` defaults to the case's own; passing another shows how the same
         case fares under a different regulator (the demo's jurisdiction switcher).
         """
-        code = (jurisdiction or case.jurisdiction).lower()
+        code = (jurisdiction or case.jurisdiction).strip().lower()
+        if not _CODE.fullmatch(code):
+            raise InvalidJurisdictionError(f"'{jurisdiction}' is not a two-letter country code")
         pack = self._packs.get(code)
         hits = self._sanctions.screen(
             [case.applicant.full_name, case.applicant.guarantor_name or ""]

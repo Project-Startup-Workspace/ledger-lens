@@ -325,6 +325,7 @@ class CreditFile(Contract):
     """The full case: inputs, every agent's output and the officer's decision."""
 
     case_id: CaseId = Field(default_factory=lambda: new_id("case"))
+    revision: int = Field(default=0, ge=0)  # bumped on every save; guards concurrent writers
     status: CaseStatus = CaseStatus.DRAFT
     created_at: datetime = Field(default_factory=utc_now)
     jurisdiction: JurisdictionCode

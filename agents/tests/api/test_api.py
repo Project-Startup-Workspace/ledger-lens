@@ -40,9 +40,11 @@ def test_full_officer_flow(client: TestClient) -> None:
     client.post(f"/cases/{case_id}/disclosure/acknowledge", json={"blank_fields": []})
     decided = client.post(
         f"/cases/{case_id}/decision",
-        json={"officer_id": "officer-1", "outcome": "approve", "reason": "Steady sales"},
+        json={"outcome": "approve", "reason": "Steady sales"},
+        headers={"X-Goog-Authenticated-User-Email": "accounts.google.com:priya@lender.example"},
     ).json()
     assert decided["decision"]["overridden"] is False
+    assert decided["decision"]["officer_id"] == "priya@lender.example"
 
     assert client.get(f"/cases/{case_id}/audit").json()["verification"]["valid"]
     pack = client.get(f"/cases/{case_id}/audit-pack")
@@ -57,13 +59,18 @@ def test_full_officer_flow(client: TestClient) -> None:
 def test_errors_map_to_http_statuses(client: TestClient) -> None:
     assert client.get("/cases/case_missing").status_code == 404
     case_id = client.post("/demo-cases/synthetic-grocer-kandy").json()["case_id"]
-    decide = {"officer_id": "o", "outcome": "approve", "reason": "x"}
+    decide = {"outcome": "approve", "reason": "x"}
     assert client.post(f"/cases/{case_id}/decision", json=decide).status_code == 409
     assert client.post("/demo-cases/nope").status_code == 404
     client.post(f"/cases/{case_id}/assess")
     bad_language = client.post(f"/cases/{case_id}/explanation", json={"language": "xx"})
     assert bad_language.status_code == 422
     assert client.get(f"/cases/{case_id}/explanation/audio").status_code == 503
+    bad_code = client.get(f"/cases/{case_id}/compliance", params={"jurisdiction": "sgp"})
+    assert bad_code.status_code == 422
+    assert client.post(f"/cases/{case_id}/decision", json=decide).status_code == 200
+    assert client.post(f"/cases/{case_id}/decision", json=decide).status_code == 409
+    assert client.post(f"/cases/{case_id}/assess").status_code == 409
 
 
 def test_uploads_are_type_and_size_checked(client: TestClient) -> None:
@@ -78,6 +85,20 @@ def test_uploads_are_type_and_size_checked(client: TestClient) -> None:
     page = (DEMO / "synthetic-grocer-kandy" / "notebook-p1.png").read_bytes()
     ok = client.post(url, data={"kind": "notebook"}, files={"file": ("p.png", page, "image/png")})
     assert ok.status_code == 201 and ok.json()["kind"] == "notebook"
+
+
+def test_officer_header_is_trusted_only_with_a_token(settings: Settings) -> None:
+    open_client = TestClient(create_app(settings))
+    case = open_client.post("/demo-cases/synthetic-grocer-kandy", headers={"X-Officer-Id": "spoof"})
+    events = open_client.get(f"/cases/{case.json()['case_id']}/audit").json()["events"]
+    assert events[0]["actor"] == "officer"  # no token, so the header is ignored
+
+    settings.api_token = SecretStr("s3cret")
+    proxied = TestClient(create_app(settings))
+    headers = {"Authorization": "Bearer s3cret", "X-Officer-Id": "officer-7"}
+    case = proxied.post("/demo-cases/synthetic-grocer-kandy", headers=headers)
+    events = proxied.get(f"/cases/{case.json()['case_id']}/audit", headers=headers).json()
+    assert events["events"][0]["actor"] == "officer-7"
 
 
 def test_bearer_token_is_enforced_when_configured(settings: Settings) -> None:

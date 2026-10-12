@@ -54,6 +54,9 @@ def test_a2a_handle_checks_a_credit_file(settings: Settings) -> None:
     assert report["jurisdiction"] == "sg" and report["findings"]
     assert "error" in json.loads(handle(app_auditpulse, "not json"))
     assert "error" in json.loads(handle(app_auditpulse, "[1, 2]"))
+    for bad in (5, "sgp"):
+        body = json.dumps({"credit_file": case.model_dump(mode="json"), "jurisdiction": bad})
+        assert "error" in json.loads(handle(app_auditpulse, body))
 
 
 def test_a2a_service_publishes_its_agent_card(settings: Settings) -> None:

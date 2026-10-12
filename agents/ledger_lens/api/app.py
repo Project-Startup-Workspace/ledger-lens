@@ -21,6 +21,7 @@ from ledger_lens.api.models import (
     ExplainRequest,
 )
 from ledger_lens.audit_trail.pack import PackVerification, verify_pack
+from ledger_lens.auditpulse.agent import InvalidJurisdictionError
 from ledger_lens.coordinator import (
     CaseNotFoundError,
     CaseStateError,
@@ -40,10 +41,13 @@ from ledger_lens.shared.schemas import (
     EvidenceKind,
     Explanation,
 )
+from ledger_lens.shared.storage import ConcurrentUpdateError
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf", "text/csv"}
-OFFICER = "officer"  # until sign-in exists, actions are attributed to a generic officer
+ANONYMOUS_OFFICER = "officer"
+IAP_USER_HEADER = "x-goog-authenticated-user-email"
+OFFICER_HEADER = "x-officer-id"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -67,7 +71,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def coord() -> Coordinator:
         return coordinator
 
+    def officer(request: Request) -> str:
+        """Who is acting, from a trusted source only; never from the request body.
+
+        Behind Identity-Aware Proxy, Google sets the signed-in user's email. The web
+        app's server-side proxy, which holds the API token, may set X-Officer-Id.
+        """
+        if iap := request.headers.get(IAP_USER_HEADER):
+            return iap.removeprefix("accounts.google.com:")
+        if settings.api_token and (forwarded := request.headers.get(OFFICER_HEADER)):
+            return forwarded[:64]
+        return ANONYMOUS_OFFICER
+
     Coord = Annotated[Coordinator, Depends(coord)]  # noqa: N806 - a type alias
+    Officer = Annotated[str, Depends(officer)]  # noqa: N806 - a type alias
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
@@ -82,20 +99,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return demo_cases()
 
     @app.post("/demo-cases/{slug}", tags=["demo"], dependencies=auth, status_code=201)
-    def open_demo(slug: str, c: Coord) -> CreditFile:
+    def open_demo(slug: str, c: Coord, who: Officer) -> CreditFile:
         try:
-            return open_demo_case(c, slug, OFFICER)
+            return open_demo_case(c, slug, who)
         except KeyError:
             raise HTTPException(404, f"no demo case '{slug}'") from None
 
     @app.post("/cases", tags=["cases"], dependencies=auth, status_code=201)
-    def create_case(body: CreateCase, c: Coord) -> CreditFile:
+    def create_case(body: CreateCase, c: Coord, who: Officer) -> CreditFile:
         return c.create_case(
             applicant=body.applicant,
             loan=body.loan,
             consent=Consent(given=body.consent_given, method=body.consent_method),
             jurisdiction=body.jurisdiction,
-            actor=OFFICER,
+            actor=who,
         )
 
     @app.get("/cases", tags=["cases"], dependencies=auth)
@@ -110,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def upload_evidence(
         case_id: str,
         c: Coord,
+        who: Officer,
         kind: Annotated[EvidenceKind, Form()],
         file: Annotated[UploadFile, File()],
     ) -> EvidenceDocument:
@@ -127,7 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             filename=file.filename or "upload",
             content_type=content_type,
             data=data,
-            actor=OFFICER,
+            actor=who,
         )
 
     @app.get("/cases/{case_id}/evidence/{evidence_id}/file", tags=["evidence"], dependencies=auth)
@@ -136,16 +154,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(data, media_type=content_type, headers={"Cache-Control": "private"})
 
     @app.post("/cases/{case_id}/assess", tags=["assessment"], dependencies=auth)
-    def assess(case_id: str, c: Coord) -> CreditFile:
-        return c.assess(case_id, OFFICER)
+    def assess(case_id: str, c: Coord, who: Officer) -> CreditFile:
+        return c.assess(case_id, who)
 
     @app.get("/cases/{case_id}/compliance", tags=["assessment"], dependencies=auth)
     def compliance(case_id: str, jurisdiction: str, c: Coord) -> ComplianceReport:
         return c.compliance_view(case_id, jurisdiction)
 
     @app.post("/cases/{case_id}/explanation", tags=["assessment"], dependencies=auth)
-    def explain(case_id: str, body: ExplainRequest, c: Coord) -> Explanation:
-        return c.explain_in(case_id, body.language, OFFICER)
+    def explain(case_id: str, body: ExplainRequest, c: Coord, who: Officer) -> Explanation:
+        return c.explain_in(case_id, body.language, who)
 
     @app.get("/cases/{case_id}/report", tags=["assessment"], dependencies=auth)
     def report(case_id: str, c: Coord) -> Response:
@@ -156,14 +174,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(c.speech(case_id), media_type="audio/wav")
 
     @app.post("/cases/{case_id}/disclosure/acknowledge", tags=["decision"], dependencies=auth)
-    def acknowledge(case_id: str, body: AcknowledgeDisclosure, c: Coord) -> CreditFile:
-        return c.acknowledge_disclosure(case_id, blank_fields=body.blank_fields, actor=OFFICER)
+    def acknowledge(
+        case_id: str, body: AcknowledgeDisclosure, c: Coord, who: Officer
+    ) -> CreditFile:
+        return c.acknowledge_disclosure(case_id, blank_fields=body.blank_fields, actor=who)
 
     @app.post("/cases/{case_id}/decision", tags=["decision"], dependencies=auth)
-    def decide(case_id: str, body: DecisionRequest, c: Coord) -> CreditFile:
-        return c.decide(
-            case_id, officer_id=body.officer_id, outcome=body.outcome, reason=body.reason
-        )
+    def decide(case_id: str, body: DecisionRequest, c: Coord, who: Officer) -> CreditFile:
+        return c.decide(case_id, officer_id=who, outcome=body.outcome, reason=body.reason)
 
     @app.get("/cases/{case_id}/audit", tags=["audit"], dependencies=auth)
     def audit_events(case_id: str, c: Coord) -> dict[str, Any]:
@@ -173,8 +191,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
-    def audit_pack(case_id: str, c: Coord) -> Response:
-        pack = c.export_audit_pack(case_id, OFFICER)
+    def audit_pack(case_id: str, c: Coord, who: Officer) -> Response:
+        pack = c.export_audit_pack(case_id, who)
         headers = {"Content-Disposition": f'attachment; filename="audit-pack-{case_id}.zip"'}
         return Response(pack, media_type="application/zip", headers=headers)
 
@@ -207,7 +225,9 @@ def _register_errors(app: FastAPI) -> None:
     statuses: dict[type[Exception], int] = {
         CaseNotFoundError: 404,
         CaseStateError: 409,
+        ConcurrentUpdateError: 409,
         UnsupportedLanguageError: 422,
+        InvalidJurisdictionError: 422,
         LlmUnavailableError: 503,
         LlmError: 502,
     }

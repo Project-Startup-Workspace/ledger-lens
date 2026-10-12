@@ -36,6 +36,7 @@ class AcknowledgeDisclosure(BaseModel):
 
 
 class DecisionRequest(BaseModel):
-    officer_id: str = Field(min_length=1, max_length=64)
+    """The deciding officer is taken from the authenticated request, not from this body."""
+
     outcome: Literal["approve", "decline", "refer"]
     reason: str = Field(min_length=1, max_length=2000)

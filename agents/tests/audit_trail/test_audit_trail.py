@@ -203,3 +203,31 @@ def test_model_card_lists_every_feature(settings: Settings) -> None:
     assert [f["name"] for f in card["features"]] == model.features
     assert card["inventory"]["version"] == model.version
     json.dumps(card)  # must be serialisable into the audit pack
+
+
+def test_format_1_packs_without_an_officer_report_still_verify(
+    store: JsonlAuditStore, signer: LocalKeySigner
+) -> None:
+    from ledger_lens.audit_trail.chain import canonical_json, sha256_hex
+
+    events = store.events(CASE)
+    files = {
+        "credit_file.json": b"{}",
+        "audit_events.jsonl": "".join(e.model_dump_json() + "\n" for e in events).encode(),
+        "compliance.json": b"[]",
+        "model_card.json": b"{}",
+        "README.txt": b"old pack",
+    }
+    manifest = canonical_json(
+        {
+            "case_id": CASE,
+            "chain": {"events": 3, "head": events[-1].hash},
+            "files": {name: sha256_hex(data) for name, data in files.items()},
+        }
+    )
+    files |= {
+        "manifest.json": manifest,
+        "manifest.sig": base64.b64encode(signer.sign(manifest)),
+        "signing-key.pub.pem": signer.public_key_pem(),
+    }
+    assert verify_pack(zipped(files), trusted_public_key=signer.public_key_pem()).valid

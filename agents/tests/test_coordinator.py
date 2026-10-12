@@ -6,7 +6,7 @@ from ledger_lens.audit_trail.chain import verify_chain
 from ledger_lens.audit_trail.pack import verify_pack
 from ledger_lens.coordinator import CaseStateError, Coordinator, build_services
 from ledger_lens.demo import demo_cases, open_demo_case
-from ledger_lens.shared.config import Settings
+from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.schemas import (
     CaseStatus,
     Consent,
@@ -14,7 +14,13 @@ from ledger_lens.shared.schemas import (
     FindingStatus,
     RiskGrade,
 )
-from ledger_lens.shared.storage import LocalBlobStore, check_key
+from ledger_lens.shared.storage import (
+    ConcurrentUpdateError,
+    LocalBlobStore,
+    LocalCaseRepository,
+    build_blob_store,
+    check_key,
+)
 
 
 @pytest.fixture
@@ -121,3 +127,28 @@ def test_storage_keys_cannot_escape_the_root(key: str, tmp_path) -> None:
         check_key(key)
     with pytest.raises(ValueError):
         LocalBlobStore(tmp_path).put(key, b"x", "text/plain")
+
+
+def test_stale_writes_are_rejected(coordinator: Coordinator, settings: Settings) -> None:
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "o")
+    repository = LocalCaseRepository(settings.data_dir / "cases")
+    first, second = repository.get(case.case_id), repository.get(case.case_id)
+    assert first and second
+    repository.save(first)
+    with pytest.raises(ConcurrentUpdateError):
+        repository.save(second)
+
+
+def test_cloud_storage_requires_buckets(settings: Settings) -> None:
+    settings.storage_backend = Backend.GCP
+    with pytest.raises(ValueError, match="bucket"):
+        build_blob_store(settings, None, "evidence")
+
+
+def test_unknown_cases_do_not_leave_locks_behind(coordinator: Coordinator) -> None:
+    from ledger_lens.coordinator import CaseNotFoundError
+
+    for i in range(5):
+        with pytest.raises(CaseNotFoundError):
+            coordinator.assess(f"case_missing{i}")
+    assert len(coordinator._locks) == 0

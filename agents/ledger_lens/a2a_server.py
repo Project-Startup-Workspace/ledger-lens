@@ -19,7 +19,7 @@ from google.genai import types
 from pydantic import ValidationError
 from starlette.applications import Starlette
 
-from ledger_lens.auditpulse.agent import AuditPulse
+from ledger_lens.auditpulse.agent import AuditPulse, InvalidJurisdictionError
 from ledger_lens.auditpulse.packs import RulePackRegistry
 from ledger_lens.auditpulse.retrieval import build_retriever
 from ledger_lens.auditpulse.screening import SanctionsScreen
@@ -38,10 +38,15 @@ def handle(auditpulse: AuditPulse, request_text: str) -> str:
         if not isinstance(body, dict):
             raise ValueError("expected a JSON object")
         jurisdiction = body.get("jurisdiction") if "credit_file" in body else None
+        if jurisdiction is not None and not isinstance(jurisdiction, str):
+            raise ValueError("jurisdiction must be a two-letter code")
         case = CreditFile.model_validate(body.get("credit_file", body))
     except (ValueError, ValidationError) as exc:
-        return json.dumps({"error": f"could not read the credit file: {exc}"[:2000]})
-    return auditpulse.check(case, jurisdiction).model_dump_json()
+        return json.dumps({"error": f"could not read the request: {exc}"[:2000]})
+    try:
+        return auditpulse.check(case, jurisdiction).model_dump_json()
+    except InvalidJurisdictionError as exc:
+        return json.dumps({"error": str(exc)})
 
 
 def build_app(settings: Settings) -> Starlette:

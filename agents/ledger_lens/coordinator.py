@@ -5,7 +5,7 @@ exactly the same logic. Every state change is saved and appended to the audit ch
 """
 
 import threading
-from collections import defaultdict
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -109,7 +109,12 @@ def build_services(settings: Settings) -> Services:
 class Coordinator:
     def __init__(self, services: Services) -> None:
         self._s = services
-        self._locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
+        # Locks live only while someone holds them, so the map cannot grow without bound.
+        # They serialise requests within this process; revisions guard across instances.
+        self._locks: weakref.WeakValueDictionary[str, threading.Lock] = (
+            weakref.WeakValueDictionary()
+        )
+        self._locks_guard = threading.Lock()
 
     # --- Case lifecycle ---------------------------------------------------------------
 
@@ -202,6 +207,7 @@ class Coordinator:
     def assess(self, case_id: str, actor: str = SYSTEM) -> CreditFile:
         """Run every stage in order. Each stage is also callable on its own."""
         with self._case(case_id) as case:
+            self._require_open(case)
             for stage in (
                 self.read_evidence,
                 self.check_consistency,
@@ -216,6 +222,7 @@ class Coordinator:
     def run_stage(self, case_id: str, stage: Callable[[CreditFile], None]) -> CreditFile:
         """Run one stage under the case lock (used by the ADK workflow)."""
         with self._case(case_id) as case:
+            self._require_open(case)
             stage(case)
             return case
 
@@ -360,6 +367,7 @@ class Coordinator:
         """The borrower has seen the Key Fact Statement and the agreement to be signed."""
         with self._case(case_id) as case:
             self._require_assessed(case)
+            self._require_open(case)
             assert case.disclosure is not None
             case.disclosure = case.disclosure.model_copy(
                 update={"acknowledged_at": utc_now(), "blank_fields": blank_fields}
@@ -378,6 +386,7 @@ class Coordinator:
         """Record the officer's decision; the system only ever recommends."""
         with self._case(case_id) as case:
             self._require_assessed(case)
+            self._require_open(case)
             assert case.risk is not None
             if not reason.strip():
                 raise CaseStateError("a reason is required for every decision")
@@ -415,7 +424,12 @@ class Coordinator:
         """Record the export, then sign and store a pack that includes that record."""
         with self._case(case_id) as case:
             exported_at = utc_now()
-            self._record(case, "audit_pack_exported", actor, {"snapshot": snapshot_hash(case)})
+            seq = len(self._s.audit.events(case.case_id))
+            # The event's sequence number makes every stored pack's key unique.
+            key = f"{case.case_id}/{exported_at:%Y%m%dT%H%M%SZ}-{seq:05d}.zip"
+            self._record(
+                case, "audit_pack_exported", actor, {"snapshot": snapshot_hash(case), "key": key}
+            )
             pack = build_pack(
                 case,
                 self._s.audit.events(case.case_id),
@@ -424,8 +438,11 @@ class Coordinator:
                 officer_report(case),
                 self._s.signer,
             )
-            key = f"{case.case_id}/{exported_at:%Y%m%dT%H%M%SZ}.zip"
-            self._s.packs.put(key, pack, "application/zip")
+            try:
+                self._s.packs.put(key, pack, "application/zip")
+            except Exception:
+                self._record(case, "audit_pack_store_failed", SYSTEM, {"key": key})
+                raise
             return pack
 
     def signing_public_key(self) -> bytes:
@@ -436,10 +453,19 @@ class Coordinator:
     @contextmanager
     def _case(self, case_id: str) -> Iterator[CreditFile]:
         """Load a case under its lock, so concurrent requests cannot interleave."""
-        with self._locks[case_id]:
+        self.get(case_id)  # unknown ids fail before a lock is created for them
+        with self._lock_for(case_id):
             case = self.get(case_id)
             with self._context(case):
                 yield case
+
+    def _lock_for(self, case_id: str) -> threading.Lock:
+        with self._locks_guard:
+            lock = self._locks.get(case_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[case_id] = lock
+            return lock
 
     @staticmethod
     @contextmanager
@@ -454,6 +480,11 @@ class Coordinator:
 
     def _record(self, case: CreditFile, event: str, actor: str, payload: dict[str, Any]) -> None:
         self._s.audit.append(case.case_id, event, actor, payload)
+
+    @staticmethod
+    def _require_open(case: CreditFile) -> None:
+        if case.status is CaseStatus.DECIDED:
+            raise CaseStateError("the case is decided and closed")
 
     @staticmethod
     def _require_assessed(case: CreditFile) -> None:

@@ -1,6 +1,7 @@
 """Where evidence files and case files live: local folders in development, Google Cloud
 (Cloud Storage and Firestore) when deployed. Callers depend only on the protocols."""
 
+import fcntl
 import re
 from pathlib import Path
 from typing import Protocol
@@ -11,6 +12,10 @@ from ledger_lens.shared.schemas import CreditFile
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
 
 
+class ConcurrentUpdateError(RuntimeError):
+    """Someone else saved the case after it was loaded; reload and try again."""
+
+
 class BlobStore(Protocol):
     def put(self, key: str, data: bytes, content_type: str) -> None: ...
 
@@ -18,7 +23,13 @@ class BlobStore(Protocol):
 
 
 class CaseRepository(Protocol):
-    def save(self, case: CreditFile) -> None: ...
+    def save(self, case: CreditFile) -> None:
+        """Store the case if nobody saved it since it was loaded, then bump its revision.
+
+        Raises ConcurrentUpdateError otherwise, so two writers never silently overwrite
+        each other (the last-writer-wins problem across processes or instances).
+        """
+        ...
 
     def get(self, case_id: str) -> CreditFile | None: ...
 
@@ -54,9 +65,15 @@ class LocalCaseRepository:
 
     def save(self, case: CreditFile) -> None:
         path = self._root / f"{check_key(case.case_id)}.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(case.model_dump_json(indent=2), encoding="utf-8")
-        tmp.replace(path)  # atomic, so a crash never leaves half a case file
+        with (self._root / ".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            stored = self.get(case.case_id)
+            if stored is not None and stored.revision != case.revision:
+                raise ConcurrentUpdateError(case.case_id)
+            case.revision += 1
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(case.model_dump_json(indent=2), encoding="utf-8")
+            tmp.replace(path)  # atomic, so a crash never leaves half a case file
 
     def get(self, case_id: str) -> CreditFile | None:
         path = self._root / f"{check_key(case_id)}.json"
@@ -104,7 +121,11 @@ class FirestoreCaseRepository:
 
 
 def build_blob_store(settings: Settings, bucket: str | None, local_dir: str) -> BlobStore:
-    if settings.storage_backend is Backend.GCP and bucket:
+    """Cloud Storage when deployed; a cloud deployment without a bucket is a config error,
+    because container disks are ephemeral and files there would silently vanish."""
+    if settings.storage_backend is Backend.GCP:
+        if not bucket:
+            raise ValueError(f"a bucket is required for '{local_dir}' when storage is gcp")
         return GcsBlobStore(bucket)
     return LocalBlobStore(settings.data_dir / local_dir)
 
