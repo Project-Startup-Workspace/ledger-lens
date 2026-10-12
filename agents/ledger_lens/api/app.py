@@ -45,6 +45,13 @@ from ledger_lens.shared.storage import ConcurrentUpdateError
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf", "text/csv"}
+# Types browsers report for .csv files (Windows says Excel; some pickers send nothing).
+CSV_ALIASES = {
+    "application/vnd.ms-excel",
+    "text/comma-separated-values",
+    "application/octet-stream",
+    "",
+}
 ANONYMOUS_OFFICER = "officer"
 IAP_USER_HEADER = "x-goog-authenticated-user-email"
 OFFICER_HEADER = "x-officer-id"
@@ -131,7 +138,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kind: Annotated[EvidenceKind, Form()],
         file: Annotated[UploadFile, File()],
     ) -> EvidenceDocument:
-        content_type = (file.content_type or "").split(";")[0]
+        content_type = (file.content_type or "").split(";")[0].strip().lower()
+        if content_type in CSV_ALIASES and (file.filename or "").lower().endswith(".csv"):
+            content_type = "text/csv"
         if content_type not in ALLOWED_TYPES:
             raise HTTPException(415, f"unsupported file type '{content_type}'")
         data = file.file.read(MAX_UPLOAD_BYTES + 1)

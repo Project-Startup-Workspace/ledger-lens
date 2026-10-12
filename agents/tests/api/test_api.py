@@ -82,6 +82,10 @@ def test_uploads_are_type_and_size_checked(client: TestClient) -> None:
     assert exe.status_code == 415
     empty = client.post(url, data={"kind": "notebook"}, files={"file": ("a.png", b"", "image/png")})
     assert empty.status_code == 422
+    csv = (DEMO / "synthetic-grocer-kandy" / "wallet-statement.csv").read_bytes()
+    windows = ("w.csv", csv, "application/vnd.ms-excel")
+    as_excel = client.post(url, data={"kind": "wallet_statement"}, files={"file": windows})
+    assert as_excel.status_code == 201 and as_excel.json()["content_type"] == "text/csv"
     page = (DEMO / "synthetic-grocer-kandy" / "notebook-p1.png").read_bytes()
     ok = client.post(url, data={"kind": "notebook"}, files={"file": ("p.png", page, "image/png")})
     assert ok.status_code == 201 and ok.json()["kind"] == "notebook"
