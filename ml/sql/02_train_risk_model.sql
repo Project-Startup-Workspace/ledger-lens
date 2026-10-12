@@ -1,5 +1,6 @@
 -- Train the risk model. group_attr is excluded from the inputs and kept for bias checks.
-CREATE OR REPLACE MODEL `ledger_lens.risk_model_v1`
+-- {{DATASET}} is replaced with project.dataset by run.sh.
+CREATE OR REPLACE MODEL `{{DATASET}}.risk_model_v1`
 OPTIONS (
   model_type = 'LOGISTIC_REG',
   input_label_cols = ['defaulted'],
@@ -17,4 +18,4 @@ SELECT
   mismatch_share,
   expense_ratio,
   defaulted
-FROM `ledger_lens.synthetic_applicants`;
+FROM `{{DATASET}}.synthetic_applicants`;

@@ -1,13 +1,14 @@
 -- Per-applicant Shapley attributions, then approval rate by group (four-fifths rule).
--- An applicant counts as approved when the predicted probability of default is below 10%.
+-- ML.EXPLAIN_PREDICT returns the probability of the predicted label only, so the
+-- probability of default is recovered from it. Approved means P(default) < 10%.
 WITH scored AS (
   SELECT
     group_attr,
-    (SELECT prob FROM UNNEST(predicted_defaulted_probs) WHERE label = 1) AS p_default,
+    IF(predicted_defaulted = 1, probability, 1 - probability) AS p_default,
     top_feature_attributions
   FROM ML.EXPLAIN_PREDICT(
-    MODEL `ledger_lens.risk_model_v1`,
-    (SELECT * FROM `ledger_lens.synthetic_applicants`),
+    MODEL `{{DATASET}}.risk_model_v1`,
+    (SELECT * FROM `{{DATASET}}.synthetic_applicants`),
     STRUCT(7 AS top_k_features)
   )
 )

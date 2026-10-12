@@ -14,7 +14,7 @@ import json
 import numpy as np
 from numpy.typing import NDArray
 
-from ledger_lens.risk.features import FEATURE_NAMES, MAX_COVERAGE
+from ledger_lens.risk.features import FEATURE_NAMES, MAX_COVERAGE, UNVERIFIED_MISMATCH_SHARE
 from ledger_lens.risk.model import LogisticModel
 from ledger_lens.shared.config import REPO_ROOT
 
@@ -35,10 +35,11 @@ TRUE_EFFECTS = {
 }
 TRUE_INTERCEPT = -1.6
 
+# Features, default labels, and a synthetic group attribute used only for bias checks.
+Dataset = tuple[NDArray[np.float64], NDArray[np.int_], NDArray[np.str_]]
 
-def synthesise(
-    n: int, rng: np.random.Generator
-) -> tuple[NDArray[np.float64], NDArray[np.int_], NDArray[np.str_]]:
+
+def synthesise(n: int, rng: np.random.Generator) -> Dataset:
     """Return features, default labels and a synthetic group attribute for bias checks."""
     verified = rng.random(n) < 0.55
     columns = {
@@ -47,7 +48,7 @@ def synthesise(
         "weeks_of_records": rng.integers(2, 53, n).astype(float),
         "years_in_business": np.minimum(rng.exponential(5, n), 30),
         "wallet_verified": verified.astype(float),
-        "mismatch_share": np.where(verified, rng.beta(1, 7, n), 0.0),
+        "mismatch_share": np.where(verified, rng.beta(1, 7, n), UNVERIFIED_MISMATCH_SHARE),
         "expense_ratio": rng.uniform(0.45, 0.98, n),
     }
     x = np.column_stack([columns[name] for name in FEATURE_NAMES])
@@ -88,15 +89,15 @@ def auc(scores: NDArray[np.float64], labels: NDArray[np.int_]) -> float:
     )
 
 
-def train(n: int = 6000) -> LogisticModel:
+def train(n: int = 6000) -> tuple[LogisticModel, Dataset]:
+    """Fit on 80% of `n` synthetic applicants; no files are written."""
     rng = np.random.default_rng(SEED)
     x, y, group = synthesise(n, rng)
     split = int(n * 0.8)
     means, scales, coefficients, intercept = fit_logistic(x[:split], y[:split])
     z_test = (x[split:] - means) / scales
     test_scores = 1 / (1 + np.exp(-(intercept + z_test @ coefficients)))
-    write_training_csv(x, y, group)
-    return LogisticModel(
+    model = LogisticModel(
         version=VERSION,
         features=list(FEATURE_NAMES),
         means=means.round(6).tolist(),
@@ -109,12 +110,12 @@ def train(n: int = 6000) -> LogisticModel:
             "default_rate": round(float(y.mean()), 4),
         },
     )
+    return model, (x, y, group)
 
 
-def write_training_csv(
-    x: NDArray[np.float64], y: NDArray[np.int_], group: NDArray[np.str_]
-) -> None:
+def write_training_csv(data: Dataset) -> None:
     """The same rows, for training the cloud model with BigQuery ML (see ml/sql)."""
+    x, y, group = data
     TRAINING_CSV.parent.mkdir(parents=True, exist_ok=True)
     with TRAINING_CSV.open("w", newline="") as fh:
         writer = csv.writer(fh, lineterminator="\n")
@@ -124,7 +125,8 @@ def write_training_csv(
 
 
 def main() -> None:
-    model = train()
+    model, data = train()
+    write_training_csv(data)
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT.write_text(json.dumps(model.model_dump(), indent=2) + "\n")
     print(f"wrote {ARTIFACT.relative_to(REPO_ROOT)}: {model.metrics}")

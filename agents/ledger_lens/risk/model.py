@@ -9,7 +9,7 @@ import json
 import math
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class LogisticModel(BaseModel):
@@ -22,6 +22,16 @@ class LogisticModel(BaseModel):
     trained_on: str
     metrics: dict[str, float]
     illustrative: bool = True
+
+    @model_validator(mode="after")
+    def _well_formed(self) -> "LogisticModel":
+        """Reject artifacts that would divide by zero or misalign features."""
+        sizes = {len(self.features), len(self.means), len(self.scales), len(self.coefficients)}
+        if len(sizes) != 1:
+            raise ValueError("features, means, scales and coefficients differ in length")
+        if any(scale <= 0 for scale in self.scales):
+            raise ValueError("every feature scale must be positive (a constant column?)")
+        return self
 
     def standardise(self, values: dict[str, float]) -> list[float]:
         return [
@@ -41,9 +51,16 @@ class LogisticModel(BaseModel):
         z = self.standardise(values)
         return {name: c * v for name, c, v in zip(self.features, self.coefficients, z, strict=True)}
 
-    def value_for_logit(self, values: dict[str, float], feature: str, target: float) -> float:
-        """Value `feature` would need, others unchanged, for the logit to reach `target`."""
+    def value_for_logit(
+        self, values: dict[str, float], feature: str, target: float
+    ) -> float | None:
+        """Value `feature` would need, others unchanged, for the logit to reach `target`.
+
+        None when the feature has no effect in this model, so no value would do it.
+        """
         i = self.features.index(feature)
+        if self.coefficients[i] == 0:
+            return None
         gap = target - self.logit(values)
         return values[feature] + gap / self.coefficients[i] * self.scales[i]
 

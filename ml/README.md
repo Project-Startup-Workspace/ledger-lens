@@ -11,7 +11,7 @@ An interpretable logistic regression. Every score comes with Shapley reason code
 | `weeks_of_records` | Weeks of notebook history | Yes |
 | `years_in_business` | Self-declared tenure | No |
 | `wallet_verified` | A statement was compared with the notebook | Yes |
-| `mismatch_share` | Share of compared weeks that were flagged | No |
+| `mismatch_share` | Share of compared weeks that were flagged; 0.125 (average) when there is no statement | No |
 | `expense_ratio` | Expenses ÷ sales | No |
 
 ## Local (default)
@@ -24,10 +24,8 @@ This writes `artifacts/risk-local-v1.json` (weights, feature means and scales, h
 
 ## BigQuery ML
 
-1. `sql/01_load_training_data.sh <project>` loads the CSV.
-2. Run `sql/02_train_risk_model.sql` to train with `enable_global_explain`.
-3. Run `sql/03_explain_and_bias.sql` for `ML.EXPLAIN_PREDICT` attributions and approval rate by group.
-4. Export the weights with `ledger_lens.risk.bqml.export_model`, save them as a JSON artifact, and point `LL_RISK_MODEL_PATH` at it.
+1. `sql/run.sh <project> [dataset]` loads the CSV, trains with `enable_global_explain` (`02_train_risk_model.sql`), and reports `ML.EXPLAIN_PREDICT` attributions and approval rate by group (`03_explain_and_bias.sql`).
+2. Export the weights with `ledger_lens.risk.bqml.export_model`, save them as a JSON artifact, and point `LL_RISK_MODEL_PATH` at it.
 
 Scoring always runs from an exported artifact, so a case never waits on a BigQuery query and explanations match between environments. See `docs/adr/0003-bigquery-ml-risk-model.md`.
 

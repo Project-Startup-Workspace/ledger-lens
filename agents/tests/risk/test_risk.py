@@ -69,7 +69,7 @@ def test_value_for_logit_inverts_the_model(model: LogisticModel) -> None:
 
 
 def test_training_is_reproducible_and_recovers_effect_directions() -> None:
-    a, b = train(n=3000), train(n=3000)
+    (a, _), (b, _) = train(n=3000), train(n=3000)
     assert a.coefficients == b.coefficients
     assert a.metrics["holdout_auc"] > 0.7
     for name, coefficient in zip(a.features, a.coefficients, strict=True):
@@ -152,3 +152,81 @@ def test_smaller_loan_step_reaches_grade_b_when_applied(model: LogisticModel) ->
 def test_features_treat_loss_making_business_as_zero_coverage() -> None:
     case = make_case(weekly_net=-1000, amount=100_000)
     assert extract_features(case)["debt_service_coverage"] == 0.0
+
+
+def weak_case(statement_id: str | None) -> CreditFile:
+    """A thin, unverified file that no single change can lift to grade B."""
+    case = make_case(weekly_net=1_500, amount=300_000, weeks=3)
+    case.applicant.years_in_business = 0
+    case.consistency = case.consistency.model_copy(  # type: ignore[union-attr]
+        update={"status": "insufficient_data", "statement_evidence_id": statement_id}
+    )
+    return case
+
+
+def test_missing_statement_is_never_given_as_a_reason(model: LogisticModel) -> None:
+    result = RiskAgent(model).assess(weak_case(statement_id=None))
+    assert "mismatch_share" not in {r.feature for r in result.reasons}
+    assert any(s.text.startswith("Add a wallet") for s in result.path_to_approval)
+
+
+def test_existing_but_short_statement_asks_for_more_coverage(model: LogisticModel) -> None:
+    steps = RiskAgent(model).assess(weak_case(statement_id="ev")).path_to_approval
+    assert any("three full weeks" in s.text for s in steps)
+
+
+def test_high_flag_adds_a_resolution_step_even_for_good_grades(model: LogisticModel) -> None:
+    flag = ConsistencyFlag(
+        week_start="2026-09-14",
+        notebook_sales=Decimal(1),
+        wallet_inflow=Decimal(0),
+        ratio=0.1,
+        expected_ratio=0.4,
+        severity="high",
+        explanation="x",
+        officer_question="y",
+    )
+    result = RiskAgent(model).assess(make_case(20_000, 100_000, flags=[flag]))
+    assert result.path_to_approval[0].feature == "consistency_flags"
+
+
+def test_smaller_loan_is_offered_as_partial_when_cap_is_not_enough(model: LogisticModel) -> None:
+    data = model.model_dump()
+    data["coefficients"][model.features.index("debt_service_coverage")] = -0.05
+    weak_coverage = LogisticModel.model_validate(data)
+    case = make_case(weekly_net=4_000, amount=150_000, weeks=52)  # no more weeks to add
+    case.applicant.years_in_business = 0
+    case.cash_flow = case.cash_flow.model_copy(  # type: ignore[union-attr]
+        update={"sales_volatility": 0.8, "total_expenses": case.cash_flow.total_sales}  # type: ignore[union-attr]
+    )
+    result = RiskAgent(weak_coverage).assess(case)
+    assert result.grade not in {RiskGrade.A, RiskGrade.B}
+    [loan_step] = [s for s in result.path_to_approval if s.feature == "debt_service_coverage"]
+    assert loan_step.target == 5.0 and not loan_step.sufficient
+
+
+def test_every_actionable_feature_has_a_step_handler(model: LogisticModel) -> None:
+    from ledger_lens.risk.features import FEATURES
+
+    case = make_case(weekly_net=4_000, amount=150_000)
+    features = extract_features(case)
+    agent = RiskAgent(model)
+    for feature in (f for f in FEATURES if f.actionable):
+        agent._step(case, features, feature.name, -2.0)  # raises if unhandled
+    with pytest.raises(NotImplementedError):
+        agent._step(case, features, "years_in_business", -2.0)
+
+
+def test_model_rejects_zero_scale(model: LogisticModel) -> None:
+    data = model.model_dump()
+    data["scales"][0] = 0
+    with pytest.raises(ValueError, match="scale"):
+        LogisticModel.model_validate(data)
+
+
+def test_zero_coefficient_has_no_counterfactual(model: LogisticModel) -> None:
+    data = model.model_dump()
+    data["coefficients"][model.features.index("weeks_of_records")] = 0
+    flat = LogisticModel.model_validate(data)
+    x = dict(zip(flat.features, [1.2, 0.5, 10, 2, 0, 0, 0.8], strict=True))
+    assert flat.value_for_logit(x, "weeks_of_records", -2.5) is None

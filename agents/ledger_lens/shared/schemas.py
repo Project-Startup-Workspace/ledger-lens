@@ -184,7 +184,7 @@ class CounterfactualStep(Contract):
     current: float
     target: float
     text: str
-    sufficient: bool  # True when this change alone reaches grade B
+    sufficient: bool  # True when this change alone would reach grade B
 
 
 class RiskResult(Contract):

@@ -26,6 +26,11 @@ FEATURES: tuple[Feature, ...] = (
 # A loss-making business has zero coverage, not negative coverage.
 MAX_COVERAGE = 5.0
 
+# Unknown agreement is treated as average agreement (the mean of the verified population's
+# mismatch share), so a missing statement is neither rewarded nor double-penalised;
+# `wallet_verified` carries the effect of having no statement.
+UNVERIFIED_MISMATCH_SHARE = 0.125
+
 FEATURE_NAMES = tuple(f.name for f in FEATURES)
 BY_NAME = {f.name: f for f in FEATURES}
 
@@ -48,7 +53,7 @@ def extract_features(case: CreditFile) -> dict[str, float]:
         "weeks_of_records": float(flow.weeks_covered),
         "years_in_business": case.applicant.years_in_business,
         "wallet_verified": 1.0 if verified else 0.0,
-        "mismatch_share": check.mismatch_share if verified else 0.0,
+        "mismatch_share": check.mismatch_share if verified else UNVERIFIED_MISMATCH_SHARE,
         "expense_ratio": round(float(flow.total_expenses / flow.total_sales), 4)
         if flow.total_sales
         else 1.0,

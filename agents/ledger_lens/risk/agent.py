@@ -30,6 +30,14 @@ GRADE_BANDS: tuple[tuple[float, RiskGrade], ...] = (
 APPROVE_GRADES = {RiskGrade.A, RiskGrade.B}
 REFER_GRADES = {RiskGrade.C}
 TOP_REASONS = 4
+RESOLVE_FLAGS_STEP = CounterfactualStep(
+    feature="consistency_flags",
+    label="Weeks where notebook and wallet disagree",
+    current=1,
+    target=0,
+    text="Explain the flagged weeks to the officer, with receipts or other evidence.",
+    sufficient=False,  # a person must clear the flag; no score change can
+)
 MAX_WEEKS = 52
 
 _FORMAT: dict[str, Callable[[float], str]] = {
@@ -71,8 +79,13 @@ class RiskAgent:
             else "decline"
         )
         # A high-severity mismatch always goes to a human, whatever the score says.
-        if case.consistency and any(f.severity == "high" for f in case.consistency.flags):
-            recommendation = "refer" if recommendation == "approve" else recommendation
+        flags = case.consistency.flags if case.consistency else []
+        high_flag = any(f.severity == "high" for f in flags)
+        if high_flag and recommendation == "approve":
+            recommendation = "refer"
+        path = [] if grade in APPROVE_GRADES else self._path(case, features)
+        if high_flag:
+            path.insert(0, RESOLVE_FLAGS_STEP)
         result = RiskResult(
             model_version=self._model.version,
             probability_of_default=round(probability, 4),
@@ -80,7 +93,7 @@ class RiskAgent:
             recommendation=recommendation,
             features=features,
             reasons=self._reasons(features),
-            path_to_approval=[] if grade in APPROVE_GRADES else self._path(case, features),
+            path_to_approval=path,
             illustrative=self._model.illustrative,
         )
         log.info("risk assessed", extra={"grade": grade.value, "pd": result.probability_of_default})
@@ -88,6 +101,9 @@ class RiskAgent:
 
     def _reasons(self, features: dict[str, float]) -> list[ReasonCode]:
         contributions = self._model.attributions(features)
+        if not features["wallet_verified"]:
+            # The imputed share is a placeholder, not evidence; never present it as a reason.
+            contributions.pop("mismatch_share")
         ranked = sorted(contributions.items(), key=lambda kv: abs(kv[1]), reverse=True)
         return [
             ReasonCode(
@@ -119,56 +135,78 @@ class RiskAgent:
     def _step(
         self, case: CreditFile, features: dict[str, float], name: str, target: float
     ) -> CounterfactualStep | None:
-        current = features[name]
-        label = BY_NAME[name].label
-        if name == "wallet_verified":
-            if current:
-                return None
-            changed = {**features, "wallet_verified": 1.0, "mismatch_share": 0.0}
-            return CounterfactualStep(
-                feature=name,
-                label=label,
-                current=0,
-                target=1,
-                text="Add a wallet or bank statement that matches the notebook.",
-                sufficient=self._model.logit(changed) <= target,
-            )
+        handlers = {
+            "wallet_verified": self._statement_step,
+            "weeks_of_records": self._weeks_step,
+            "debt_service_coverage": self._smaller_loan_step,
+        }
+        if name not in handlers:
+            raise NotImplementedError(f"actionable feature '{name}' has no counterfactual step")
+        return handlers[name](case, features, target)
 
-        needed = self._model.value_for_logit(features, name, target)
-        if name == "weeks_of_records":
-            if needed <= current or current >= MAX_WEEKS:
-                return None
-            weeks = min(math.ceil(needed), MAX_WEEKS)
-            return CounterfactualStep(
-                feature=name,
-                label=label,
-                current=current,
-                target=weeks,
-                text=f"Bring {weeks - current:.0f} more weeks of records ({weeks} in total).",
-                sufficient=needed <= MAX_WEEKS,
-            )
+    def _statement_step(
+        self, case: CreditFile, features: dict[str, float], target: float
+    ) -> CounterfactualStep | None:
+        if features["wallet_verified"]:
+            return None
+        changed = {**features, "wallet_verified": 1.0, "mismatch_share": 0.0}
+        has_statement = bool(case.consistency and case.consistency.statement_evidence_id)
+        text = (
+            "Provide a statement that covers at least three full weeks of the notebook period."
+            if has_statement
+            else "Add a wallet or bank statement that matches the notebook."
+        )
+        return CounterfactualStep(
+            feature="wallet_verified",
+            label=BY_NAME["wallet_verified"].label,
+            current=0,
+            target=1,
+            text=text,
+            sufficient=self._model.logit(changed) <= target,
+        )
 
-        if name == "debt_service_coverage":
-            if needed <= current or current <= 0 or needed > MAX_COVERAGE:
-                return None
-            # The instalment scales with the principal, so coverage scales inversely.
-            ratio = Decimal(str(current / needed))
-            amount = _round_down_to_3_figures(case.loan.amount * ratio)
-            if amount < case.loan.amount * Decimal("0.1"):
-                return None
-            return CounterfactualStep(
-                feature=name,
-                label=label,
-                current=current,
-                target=round(needed, 4),
-                text=(
-                    f"Borrow {amount:,.0f} {case.loan.currency} instead of "
-                    f"{case.loan.amount:,.0f}, so the surplus covers the instalment "
-                    f"{needed:.1f} times."
-                ),
-                sufficient=True,
-            )
-        return None
+    def _weeks_step(
+        self, case: CreditFile, features: dict[str, float], target: float
+    ) -> CounterfactualStep | None:
+        current = features["weeks_of_records"]
+        needed = self._model.value_for_logit(features, "weeks_of_records", target)
+        if needed is None or needed <= current or current >= MAX_WEEKS:
+            return None
+        weeks = min(math.ceil(needed), MAX_WEEKS)
+        return CounterfactualStep(
+            feature="weeks_of_records",
+            label=BY_NAME["weeks_of_records"].label,
+            current=current,
+            target=weeks,
+            text=f"Bring {weeks - current:.0f} more weeks of records ({weeks} in total).",
+            sufficient=needed <= MAX_WEEKS,
+        )
+
+    def _smaller_loan_step(
+        self, case: CreditFile, features: dict[str, float], target: float
+    ) -> CounterfactualStep | None:
+        current = features["debt_service_coverage"]
+        needed = self._model.value_for_logit(features, "debt_service_coverage", target)
+        if needed is None or needed <= current or current <= 0 or current >= MAX_COVERAGE:
+            return None
+        # Coverage cannot usefully exceed the cap, so a smaller loan may only help partly.
+        goal = min(needed, MAX_COVERAGE)
+        # The instalment scales with the principal, so coverage scales inversely.
+        amount = _round_down_to_3_figures(case.loan.amount * Decimal(str(current / goal)))
+        if amount < case.loan.amount * Decimal("0.1"):
+            return None
+        return CounterfactualStep(
+            feature="debt_service_coverage",
+            label=BY_NAME["debt_service_coverage"].label,
+            current=current,
+            target=round(goal, 4),
+            text=(
+                f"Borrow {amount:,.0f} {case.loan.currency} instead of "
+                f"{case.loan.amount:,.0f}, so the surplus covers the instalment "
+                f"{goal:.1f} times."
+            ),
+            sufficient=needed <= MAX_COVERAGE,
+        )
 
 
 def _round_down_to_3_figures(amount: Decimal) -> Decimal:

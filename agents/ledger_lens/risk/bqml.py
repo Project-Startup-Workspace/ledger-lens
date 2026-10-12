@@ -12,7 +12,7 @@ from ledger_lens.risk.features import FEATURE_NAMES
 from ledger_lens.risk.model import LogisticModel
 
 # Model names cannot be query parameters, so they are validated before interpolation.
-_MODEL_REF = re.compile(r"^[a-z][a-z0-9-]{4,29}\.\w+\.\w+$")
+_MODEL_REF = re.compile(r"[a-z][a-z0-9-]{4,29}\.\w+\.\w+")
 
 
 def export_model(client: bigquery.Client, model_ref: str, version: str) -> LogisticModel:
@@ -21,7 +21,7 @@ def export_model(client: bigquery.Client, model_ref: str, version: str) -> Logis
     `model_ref` is `project.dataset.model`. BQML standardises numeric inputs itself,
     so ML.WEIGHTS with standardize=TRUE pairs with ML.FEATURE_INFO's mean and stddev.
     """
-    if not _MODEL_REF.match(model_ref):
+    if not _MODEL_REF.fullmatch(model_ref):
         raise ValueError(f"not a project.dataset.model reference: {model_ref!r}")
     weights = {
         row["processed_input"]: row["weight"]
