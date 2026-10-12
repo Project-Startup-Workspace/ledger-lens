@@ -5,8 +5,9 @@ OPTIONS (
   model_type = 'LOGISTIC_REG',
   input_label_cols = ['defaulted'],
   l2_reg = 1.0,
-  data_split_method = 'RANDOM',
-  data_split_eval_fraction = 0.2,
+  -- Same holdout rows as local training, so both models are evaluated alike.
+  data_split_method = 'CUSTOM',
+  data_split_col = 'is_holdout',
   enable_global_explain = TRUE
 ) AS
 SELECT
@@ -17,5 +18,6 @@ SELECT
   wallet_verified,
   mismatch_share,
   expense_ratio,
-  defaulted
+  defaulted,
+  is_holdout
 FROM `{{DATASET}}.synthetic_applicants`;

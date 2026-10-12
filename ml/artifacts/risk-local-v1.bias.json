@@ -1,18 +1,19 @@
 {
   "model_version": "risk-local-v1",
-  "approval_threshold_pd": 0.1,
+  "model_fingerprint": "5c1fd8b6b943827a1eb480d338546fafbc486fd388aaa90c27b82b85a58cbb0e",
+  "rows": "holdout",
   "groups": {
     "group_a": {
-      "applicants": 3064.0,
-      "approval_rate": 0.346,
-      "mean_probability_of_default": 0.182
+      "applicants": 598.0,
+      "approval_rate": 0.3579,
+      "mean_probability_of_default": 0.1861
     },
     "group_b": {
-      "applicants": 2936.0,
-      "approval_rate": 0.3556,
-      "mean_probability_of_default": 0.1829
+      "applicants": 602.0,
+      "approval_rate": 0.3488,
+      "mean_probability_of_default": 0.1903
     }
   },
-  "four_fifths_ratio": 0.973,
+  "four_fifths_ratio": 0.9746,
   "passes_four_fifths": true
 }

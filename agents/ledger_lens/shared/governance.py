@@ -3,6 +3,7 @@
 Read straight from the artifact JSON, so no agent needs another agent's internals.
 """
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,19 @@ def bias_report_path(artifact: Path) -> Path:
     return artifact.with_suffix(".bias.json")
 
 
+def artifact_fingerprint(artifact: Path) -> str:
+    """Hash of the artifact's bytes; a retrained model gets a new fingerprint."""
+    return hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+
+def has_passing_bias_report(artifact: Path) -> bool:
+    """A bias report counts only if it passed and was run on exactly this artifact."""
+    report = _read_json(bias_report_path(artifact))
+    return report.get("passes_four_fifths") is True and report.get(
+        "model_fingerprint"
+    ) == artifact_fingerprint(artifact)
+
+
 def model_record(active_artifact: Path, version: str | None) -> ModelRecord | None:
     """Governance record for the model version that scored a case.
 
@@ -37,7 +51,7 @@ def model_record(active_artifact: Path, version: str | None) -> ModelRecord | No
             return ModelRecord(
                 version=version,
                 validation_auc=auc if _is_auc(auc) else None,
-                bias_report=bool(_read_json(bias_report_path(path))),
+                bias_report=has_passing_bias_report(path),
             )
     return ModelRecord(version=version, validation_auc=None, bias_report=False)
 
