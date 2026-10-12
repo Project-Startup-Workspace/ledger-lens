@@ -1,0 +1,54 @@
+{
+  "provider": "offline",
+  "read_accuracy": [
+    {
+      "script": "Latin (id)",
+      "pages": 4,
+      "labelled_lines": 69,
+      "lines_found": 1.0,
+      "amounts_exact": 0.942,
+      "flagged_for_review": 0.058,
+      "language_detected": 1.0,
+      "wrong_but_confident": 0
+    },
+    {
+      "script": "Latin (vi)",
+      "pages": 2,
+      "labelled_lines": 36,
+      "lines_found": 1.0,
+      "amounts_exact": 0.9444,
+      "flagged_for_review": 0.0556,
+      "language_detected": 1.0,
+      "wrong_but_confident": 0
+    },
+    {
+      "script": "Sinhala (si)",
+      "pages": 4,
+      "labelled_lines": 71,
+      "lines_found": 1.0,
+      "amounts_exact": 0.9437,
+      "flagged_for_review": 0.0563,
+      "language_detected": 1.0,
+      "wrong_but_confident": 0
+    }
+  ],
+  "bias": {
+    "model_version": "risk-local-v1",
+    "model_fingerprint": "5c1fd8b6b943827a1eb480d338546fafbc486fd388aaa90c27b82b85a58cbb0e",
+    "rows": "holdout",
+    "groups": {
+      "group_a": {
+        "applicants": 598.0,
+        "approval_rate": 0.3579,
+        "mean_probability_of_default": 0.1861
+      },
+      "group_b": {
+        "applicants": 602.0,
+        "approval_rate": 0.3488,
+        "mean_probability_of_default": 0.1903
+      }
+    },
+    "four_fifths_ratio": 0.9746,
+    "passes_four_fifths": true
+  }
+}

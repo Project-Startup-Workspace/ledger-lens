@@ -1,7 +1,7 @@
 {
   "jurisdiction": "sg",
   "name": "Singapore",
-  "version": "2026.10.1",
+  "version": "2026.10.2",
   "last_checked": "2026-10-12",
   "review_status": "draft",
   "sources": [
@@ -39,11 +39,19 @@
       "title": "A named officer signed off the decision",
       "severity": "critical",
       "stage": "post_decision",
-      "check": { "fact": "decision.officer_id", "op": "present" },
+      "check": {
+        "fact": "decision.officer_id",
+        "op": "present"
+      },
       "on_fail": "fail",
       "pass_detail": "The decision is signed off by a named officer.",
       "fail_detail": "No officer is recorded against the decision.",
-      "cites": [{ "source": "mas-airm-2026", "clause": "human-oversight" }]
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "human-oversight"
+        }
+      ]
     },
     {
       "id": "SG-EXP-01",
@@ -52,14 +60,26 @@
       "stage": "post_decision",
       "check": {
         "all": [
-          { "fact": "risk.reason_count", "op": "gte", "value": 1 },
-          { "fact": "decision.reason", "op": "present" }
+          {
+            "fact": "risk.reason_count",
+            "op": "gte",
+            "value": 1
+          },
+          {
+            "fact": "decision.reason",
+            "op": "present"
+          }
         ]
       },
       "on_fail": "fail",
       "pass_detail": "Model reason codes and the officer's own reason are on file.",
       "fail_detail": "The decision lacks the model's reasons or the officer's reason.",
-      "cites": [{ "source": "mas-airm-2026", "clause": "transparency" }]
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "transparency"
+        }
+      ]
     },
     {
       "id": "SG-VAL-01",
@@ -68,25 +88,44 @@
       "stage": "pre_decision",
       "check": {
         "all": [
-          { "fact": "model.version", "op": "present" },
-          { "fact": "model.validation_auc", "op": "present" }
+          {
+            "fact": "model.version",
+            "op": "present"
+          },
+          {
+            "fact": "model.validation_auc",
+            "op": "present"
+          }
         ]
       },
       "on_fail": "fail",
       "pass_detail": "The score names its model version, which has a validation record.",
       "fail_detail": "The model version or its validation record is missing.",
-      "cites": [{ "source": "mas-airm-2026", "clause": "validation" }]
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "validation"
+        }
+      ]
     },
     {
       "id": "SG-BIA-01",
-      "title": "Bias test results attached for the model version",
+      "title": "Passing bias test on file for the model version",
       "severity": "major",
       "stage": "pre_decision",
-      "check": { "fact": "model.bias_report", "op": "true" },
+      "check": {
+        "fact": "model.bias_report",
+        "op": "true"
+      },
       "on_fail": "review",
-      "pass_detail": "A bias test for this model version is on file.",
-      "fail_detail": "No bias test is on file for this model version. Run the evaluation suite.",
-      "cites": [{ "source": "mas-airm-2026", "clause": "fairness" }]
+      "pass_detail": "A bias test run on this exact model version passed the four-fifths rule.",
+      "fail_detail": "No passing bias test is on file for this model version. Run `make eval` and review the result.",
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "fairness"
+        }
+      ]
     }
   ]
 }

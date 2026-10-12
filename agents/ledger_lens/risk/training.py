@@ -22,6 +22,7 @@ VERSION = "risk-local-v1"
 ARTIFACT = REPO_ROOT / "ml" / "artifacts" / f"{VERSION}.json"
 TRAINING_CSV = REPO_ROOT / "ml" / "data" / "synthetic_applicants.csv"
 SEED = 20261012
+HOLDOUT_FRACTION = 0.2  # the last 20% of rows; marked is_holdout in the CSV
 
 # Assumed effect of each feature on the log-odds of default in the synthetic population.
 TRUE_EFFECTS = {
@@ -90,10 +91,10 @@ def auc(scores: NDArray[np.float64], labels: NDArray[np.int_]) -> float:
 
 
 def train(n: int = 6000) -> tuple[LogisticModel, Dataset]:
-    """Fit on 80% of `n` synthetic applicants; no files are written."""
+    """Fit on the first 80% of `n` synthetic applicants; no files are written."""
     rng = np.random.default_rng(SEED)
     x, y, group = synthesise(n, rng)
-    split = int(n * 0.8)
+    split = holdout_start(n)
     means, scales, coefficients, intercept = fit_logistic(x[:split], y[:split])
     z_test = (x[split:] - means) / scales
     test_scores = 1 / (1 + np.exp(-(intercept + z_test @ coefficients)))
@@ -113,15 +114,21 @@ def train(n: int = 6000) -> tuple[LogisticModel, Dataset]:
     return model, (x, y, group)
 
 
+def holdout_start(n: int) -> int:
+    return int(n * (1 - HOLDOUT_FRACTION))
+
+
 def write_training_csv(data: Dataset) -> None:
-    """The same rows, for training the cloud model with BigQuery ML (see ml/sql)."""
+    """The same rows, for BigQuery ML and the fairness check, marking the holdout rows."""
     x, y, group = data
+    split = holdout_start(len(y))
     TRAINING_CSV.parent.mkdir(parents=True, exist_ok=True)
     with TRAINING_CSV.open("w", newline="") as fh:
         writer = csv.writer(fh, lineterminator="\n")
-        writer.writerow([*FEATURE_NAMES, "group_attr", "defaulted"])
-        for row, label, attr in zip(x.round(4).tolist(), y.tolist(), group.tolist(), strict=True):
-            writer.writerow([*row, attr, label])
+        writer.writerow([*FEATURE_NAMES, "group_attr", "defaulted", "is_holdout"])
+        rows = zip(x.round(4).tolist(), y.tolist(), group.tolist(), strict=True)
+        for i, (row, label, attr) in enumerate(rows):
+            writer.writerow([*row, attr, label, "true" if i >= split else "false"])
 
 
 def main() -> None:

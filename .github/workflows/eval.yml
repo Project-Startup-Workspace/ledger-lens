@@ -1,0 +1,48 @@
+name: Evaluation
+
+# Read accuracy per script and the fairness check; fails when either gate fails.
+# Live Gemini reads are used when the GCP variables exist (nightly, or by hand with live=true);
+# otherwise the recorded responses are scored.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: Score live Gemini reads instead of recorded responses
+        type: boolean
+        default: true
+  schedule:
+    - cron: "30 18 * * *" # nightly, 00:00 in Sri Lanka (UTC+5:30)
+
+permissions:
+  contents: read
+  id-token: write # only used by live runs, to sign in to Google Cloud without keys
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      LIVE: ${{ (github.event_name == 'schedule' || inputs.live) && vars.WIF_PROVIDER != '' }}
+    defaults:
+      run:
+        working-directory: agents
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0 # no floating major tag is published
+      - run: uv sync --locked --all-extras
+      - if: env.LIVE == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - name: Run evaluation
+        env:
+          LL_LLM_PROVIDER: ${{ env.LIVE == 'true' && 'vertex' || 'offline' }}
+          LL_GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+        run: uv run python -m ledger_lens.evaluation
+      - if: always()
+        run: cat ../eval/results/latest.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evaluation-results
+          path: eval/results/
