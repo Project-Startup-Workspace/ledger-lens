@@ -1,0 +1,28 @@
+# Whole system locally in containers: `docker compose up --build`, then http://localhost:3000
+services:
+  api:
+    build: { context: ., dockerfile: infra/docker/api.Dockerfile }
+    env_file: { path: .env, required: false }
+    environment:
+      LL_CORS_ORIGINS: '["http://localhost:3000"]'
+    ports: ["8080:8080"]
+    volumes: ["ledger-data:/app/.data"]
+
+  a2a:
+    build: { context: ., dockerfile: infra/docker/api.Dockerfile }
+    command: ["sh", "-c", "uvicorn ledger_lens.a2a_server:app --host 0.0.0.0 --port 8081"]
+    env_file: { path: .env, required: false }
+    environment:
+      LL_A2A_PUBLIC_URL: http://localhost:8081
+    ports: ["8081:8081"]
+
+  web:
+    build: { context: ., dockerfile: infra/docker/web.Dockerfile }
+    env_file: { path: .env, required: false } # LL_API_TOKEN, LL_WEB_USERS
+    environment:
+      LL_API_URL: http://api:8080
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  ledger-data:

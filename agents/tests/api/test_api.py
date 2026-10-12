@@ -106,7 +106,7 @@ def test_officer_header_is_trusted_only_with_a_token(settings: Settings) -> None
 
 
 def test_bearer_token_is_enforced_when_configured(settings: Settings) -> None:
-    settings.api_token = SecretStr("s3cret")
+    settings.api_token = SecretStr("s3cret\n")  # as stored by `openssl ... | gcloud secrets`
     client = TestClient(create_app(settings))
     assert client.get("/health").status_code == 200  # health stays open for probes
     assert client.get("/cases").status_code == 401

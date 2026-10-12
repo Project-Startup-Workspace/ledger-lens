@@ -47,6 +47,23 @@ jobs:
       - run: npm run format:check
       - run: npm run build # includes the TypeScript check
 
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [api, web]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the ${{ matrix.image }} image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/${{ matrix.image }}.Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
   secrets:
     runs-on: ubuntu-latest
     steps:

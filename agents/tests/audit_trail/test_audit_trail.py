@@ -231,3 +231,12 @@ def test_format_1_packs_without_an_officer_report_still_verify(
         "signing-key.pub.pem": signer.public_key_pem(),
     }
     assert verify_pack(zipped(files), trusted_public_key=signer.public_key_pem()).valid
+
+
+def test_cloud_storage_requires_a_kms_signing_key(settings: Settings) -> None:
+    from ledger_lens.audit_trail.signing import build_signer
+    from ledger_lens.shared.config import Backend
+
+    settings.storage_backend = Backend.GCP
+    with pytest.raises(ValueError, match="KMS"):
+        build_signer(settings)

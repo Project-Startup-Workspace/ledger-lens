@@ -4,7 +4,7 @@ UV ?= uv
 AGENTS := agents
 WEB := web
 
-.PHONY: help setup check lint typecheck test api a2a web demo-data train eval clean
+.PHONY: help setup check lint typecheck test api a2a web up demo-data train eval clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -32,6 +32,12 @@ api: ## Run the API on :8080 (offline models unless .env says otherwise)
 
 a2a: ## Run the AuditPulse A2A service on :8081
 	cd $(AGENTS) && $(UV) run uvicorn ledger_lens.a2a_server:app --port 8081
+
+web: ## Run the officer web app on :3000 (expects `make api`)
+	cd $(WEB) && npm run dev
+
+up: ## Run web, API and A2A in containers (docker compose)
+	docker compose up --build
 
 demo-data: ## Regenerate the synthetic demo notebooks, statements and fixtures
 	cd $(AGENTS) && $(UV) run python scripts/generate_demo_data.py

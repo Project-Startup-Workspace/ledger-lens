@@ -220,7 +220,8 @@ def _bearer_auth(settings: Settings) -> Callable[..., None]:
     """Require `Authorization: Bearer <LL_API_TOKEN>` when a token is configured."""
 
     def check(authorization: Annotated[str | None, Header()] = None) -> None:
-        expected = settings.api_token.get_secret_value() if settings.api_token else None
+        # Stripped: secrets created with `echo` or `openssl` often end in a newline.
+        expected = settings.api_token.get_secret_value().strip() if settings.api_token else None
         if expected is None:
             return
         supplied = (authorization or "").removeprefix("Bearer ").strip()
