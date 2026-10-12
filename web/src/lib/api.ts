@@ -64,7 +64,8 @@ export const api = {
 export const urls = {
   evidenceFile: (id: string, evidenceId: string) =>
     `${BASE}/cases/${id}/evidence/${evidenceId}/file`,
-  audio: (id: string) => `${BASE}/cases/${id}/explanation/audio`,
+  // The query only busts the browser cache when the language changes; the API ignores it.
+  audio: (id: string, language: string) => `${BASE}/cases/${id}/explanation/audio?lang=${language}`,
   auditPack: (id: string) => `${BASE}/cases/${id}/audit-pack`,
   report: (id: string) => `${BASE}/cases/${id}/report`,
 };

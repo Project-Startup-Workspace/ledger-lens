@@ -1,20 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { api } from "@/lib/api";
+import { LANGUAGES } from "@/lib/languages";
+import type { Jurisdiction } from "@/lib/types";
 
 import { Button, Card, ErrorNote } from "./ui";
-
-const LANGUAGES = {
-  en: "English",
-  si: "Sinhala",
-  ta: "Tamil",
-  id: "Bahasa Indonesia",
-  vi: "Vietnamese",
-  hi: "Hindi",
-};
 
 function Field({
   label,
@@ -47,6 +40,14 @@ export function NewCaseForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
+
+  useEffect(() => {
+    api
+      .jurisdictions()
+      .then(setJurisdictions)
+      .catch((e: Error) => setError(e.message));
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,9 +137,11 @@ export function NewCaseForm() {
               name="jurisdiction"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
             >
-              <option value="lk">Sri Lanka</option>
-              <option value="sg">Singapore</option>
-              <option value="in">India</option>
+              {jurisdictions.map((j) => (
+                <option key={j.code} value={j.code}>
+                  {j.name}
+                </option>
+              ))}
             </select>
           </label>
         </div>

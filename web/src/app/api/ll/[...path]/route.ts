@@ -1,10 +1,12 @@
 /**
  * Server-side proxy to the Ledger Lens API.
  *
- * The browser only ever talks to this app. The API token and the officer identity are
+ * The browser only ever talks to this app. The API token and the signed-in officer are
  * added here, on the server, so neither can be read or forged from the browser.
  */
 import type { NextRequest } from "next/server";
+
+import { OFFICER_HEADER } from "@/proxy";
 
 const API_URL = process.env.LL_API_URL ?? "http://localhost:8080";
 const PASSTHROUGH_HEADERS = ["content-type", "accept"];
@@ -21,8 +23,9 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/ll/[...path
   }
   if (process.env.LL_API_TOKEN) {
     headers.set("authorization", `Bearer ${process.env.LL_API_TOKEN}`);
-    // Until officer sign-in exists, every action is attributed to the configured officer.
-    headers.set("x-officer-id", process.env.LL_OFFICER_ID ?? "officer");
+    // Set by proxy.ts from the signed-in user; clients cannot supply it themselves.
+    const officer = request.headers.get(OFFICER_HEADER) ?? process.env.LL_OFFICER_ID;
+    if (officer) headers.set("x-officer-id", officer);
   }
 
   const hasBody = !["GET", "HEAD"].includes(request.method);

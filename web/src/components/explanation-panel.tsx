@@ -3,18 +3,10 @@
 import { useState } from "react";
 
 import { api, urls } from "@/lib/api";
+import { LANGUAGES } from "@/lib/languages";
 import type { Explanation } from "@/lib/types";
 
 import { Badge, Button, Card, ErrorNote } from "./ui";
-
-const LANGUAGES: Record<string, string> = {
-  en: "English",
-  si: "සිංහල",
-  ta: "தமிழ்",
-  id: "Bahasa Indonesia",
-  vi: "Tiếng Việt",
-  hi: "हिन्दी",
-};
 
 /** What the borrower hears: plain words in their language, read aloud where possible. */
 export function ExplanationPanel({ caseId, initial }: { caseId: string; initial: Explanation }) {
@@ -73,7 +65,15 @@ export function ExplanationPanel({ caseId, initial }: { caseId: string; initial:
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {explanation.audio_available ? (
-          <audio controls src={urls.audio(caseId)} className="w-full" />
+          // Keyed and versioned by language so a translation reloads the audio, and
+          // preload="none" so speech is only generated when someone presses play.
+          <audio
+            key={explanation.borrower_language}
+            controls
+            preload="none"
+            src={urls.audio(caseId, explanation.borrower_language)}
+            className="w-full"
+          />
         ) : (
           <Button variant="secondary" onClick={readInBrowser}>
             Read aloud on this device

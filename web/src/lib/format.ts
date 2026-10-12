@@ -8,8 +8,18 @@ export function percent(value: number, digits = 0): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+/**
+ * "12 Oct" from an ISO date or timestamp. Date-only values (ledger days, week starts)
+ * are calendar dates, so they are shown in UTC; otherwise viewers west of UTC would
+ * see the previous day.
+ */
 export function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    ...(dateOnly ? { timeZone: "UTC" } : {}),
+  });
 }
 
 export function title(slug: string): string {

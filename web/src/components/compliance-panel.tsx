@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import type { ComplianceReport, FindingStatus, Jurisdiction } from "@/lib/types";
@@ -26,6 +26,7 @@ export function CompliancePanel({
   const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
   const [report, setReport] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0); // only the most recent switch may update the panel
 
   useEffect(() => {
     api
@@ -35,10 +36,13 @@ export function CompliancePanel({
   }, []);
 
   async function switchTo(code: string) {
+    const request = ++latest.current;
+    setError(null);
     try {
-      setReport(code === initial.jurisdiction ? initial : await api.compliance(caseId, code));
+      const next = code === initial.jurisdiction ? initial : await api.compliance(caseId, code);
+      if (request === latest.current) setReport(next);
     } catch (e) {
-      setError((e as Error).message);
+      if (request === latest.current) setError((e as Error).message);
     }
   }
 

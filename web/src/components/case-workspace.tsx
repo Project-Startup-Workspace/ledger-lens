@@ -92,7 +92,7 @@ export function CaseWorkspace() {
       {credit.explanation && (
         <ExplanationPanel key={credit.revision} caseId={id} initial={credit.explanation} />
       )}
-      {assessed && <DecisionPanel credit={credit} busy={busy} run={run} />}
+      {assessed && <DecisionPanel key={credit.revision} credit={credit} busy={busy} run={run} />}
     </div>
   );
 }

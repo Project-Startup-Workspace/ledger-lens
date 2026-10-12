@@ -4,11 +4,13 @@ import { useState } from "react";
 
 import { urls } from "@/lib/api";
 import { money, shortDate } from "@/lib/format";
-import type { CreditFile, LedgerEntry } from "@/lib/types";
+import type { CreditFile } from "@/lib/types";
 
 import { Badge, Card } from "./ui";
 
-const LOW_CONFIDENCE = 0.6; // matches LL_MIN_EXTRACTION_CONFIDENCE's default
+// What the API accepts (agents/ledger_lens/api/app.py ALLOWED_TYPES).
+const PAGE_TYPES = "image/png,image/jpeg,image/webp";
+const STATEMENT_TYPES = ".csv,text/csv,image/png,image/jpeg,image/webp,application/pdf";
 
 /** Upload pages (camera on phones) and see every figure boxed where it was read. */
 export function EvidencePanel({
@@ -20,10 +22,13 @@ export function EvidencePanel({
   busy: boolean;
   onUpload: (kind: string, file: File) => void;
 }) {
-  const [selectedDoc, setSelectedDoc] = useState(credit.evidence[0]?.id ?? null);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
-  const doc = credit.evidence.find((d) => d.id === selectedDoc);
-  const extraction = credit.extractions.find((x) => x.evidence_id === selectedDoc);
+  // Until the officer picks a document, show the most recent upload.
+  const doc = credit.evidence.find((d) => d.id === selectedDoc) ?? credit.evidence.at(-1);
+  const extraction = credit.extractions.find((x) => x.evidence_id === doc?.id);
+  // The server decides what needs review (its threshold is configurable), not the UI.
+  const forReview = new Set(credit.cash_flow?.entries_for_review.map((e) => e.id));
   const isImage = doc?.content_type.startsWith("image/");
   const closed = credit.status === "decided";
 
@@ -33,14 +38,14 @@ export function EvidencePanel({
         <div className="mb-3 flex flex-wrap gap-2">
           <UploadButton
             label="Photograph notebook page"
-            accept="image/*"
+            accept={PAGE_TYPES}
             capture
             disabled={busy}
             onPick={(f) => onUpload("notebook", f)}
           />
           <UploadButton
             label="Add wallet statement"
-            accept=".csv,text/csv,image/*,application/pdf"
+            accept={STATEMENT_TYPES}
             disabled={busy}
             onPick={(f) => onUpload("wallet_statement", f)}
           />
@@ -51,7 +56,7 @@ export function EvidencePanel({
           <button
             key={d.id}
             onClick={() => setSelectedDoc(d.id)}
-            className={`shrink-0 rounded-lg px-3 py-1.5 text-xs ring-1 ${d.id === selectedDoc ? "bg-slate-900 text-white ring-slate-900" : "bg-white ring-slate-300"}`}
+            className={`shrink-0 rounded-lg px-3 py-1.5 text-xs ring-1 ${d.id === doc?.id ? "bg-slate-900 text-white ring-slate-900" : "bg-white ring-slate-300"}`}
           >
             {d.filename}
           </button>
@@ -71,7 +76,7 @@ export function EvidencePanel({
                 key={entry.id}
                 aria-label={`${entry.description} ${entry.amount}`}
                 onClick={() => setSelectedEntry(entry.id)}
-                className={`absolute rounded-sm ring-2 transition ${boxStyle(entry, entry.id === selectedEntry)}`}
+                className={`absolute rounded-sm ring-2 transition ${boxStyle(forReview.has(entry.id), entry.id === selectedEntry)}`}
                 style={{
                   left: `${entry.box.x_min * 100}%`,
                   top: `${entry.box.y_min * 100}%`,
@@ -106,7 +111,7 @@ export function EvidencePanel({
                   {shortDate(entry.entry_date)} · {entry.description}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {entry.confidence < LOW_CONFIDENCE && <Badge tone="amber">review</Badge>}
+                  {forReview.has(entry.id) && <Badge tone="amber">review</Badge>}
                   <span className={entry.direction === "in" ? "text-emerald-700" : "text-rose-700"}>
                     {entry.direction === "in" ? "+" : "−"}
                     {money(entry.amount, extraction.currency)}
@@ -122,9 +127,9 @@ export function EvidencePanel({
   );
 }
 
-function boxStyle(entry: LedgerEntry, selected: boolean): string {
+function boxStyle(needsReview: boolean, selected: boolean): string {
   if (selected) return "bg-sky-400/30 ring-sky-500";
-  if (entry.confidence < LOW_CONFIDENCE) return "bg-amber-300/30 ring-amber-500";
+  if (needsReview) return "bg-amber-300/30 ring-amber-500";
   return "ring-emerald-500/60 hover:bg-emerald-300/20";
 }
 

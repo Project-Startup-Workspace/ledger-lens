@@ -31,7 +31,7 @@ export function DecisionPanel({
       .audit(id)
       .then(setAudit)
       .catch(() => setAudit(null));
-  }, [id, credit.status, credit.decision]);
+  }, [id, credit.revision]);
 
   return (
     <>
