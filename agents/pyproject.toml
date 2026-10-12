@@ -13,12 +13,14 @@ dependencies = [
 [project.optional-dependencies]
 # Google Cloud backends; local mode runs without them.
 gcp = [
+  "google-auth[requests]>=2.38",
   "google-cloud-bigquery>=3.30",
   "google-cloud-modelarmor>=0.3",
 ]
 
 [dependency-groups]
 dev = [
+  "jsonschema>=4.23",  # validates rule packs against rule-packs/schema.json in tests
   "mypy>=1.15",
   "numpy>=2.2",  # risk model training only; scoring is pure Python
   "pillow>=11.2",  # demo data generation only

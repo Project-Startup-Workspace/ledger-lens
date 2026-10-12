@@ -1,0 +1,81 @@
+{
+  "jurisdiction": "common",
+  "name": "All markets",
+  "version": "2026.10.2",
+  "last_checked": "2026-10-12",
+  "review_status": "draft",
+  "sources": [
+    {
+      "id": "ll-data-policy",
+      "title": "Ledger Lens data and consent policy",
+      "url": "https://github.com/Project-Startup-Workspace/ledger-lens/blob/dev/docs/data-policy.md",
+      "clauses": [
+        {
+          "id": "consent",
+          "reference": "Section 1",
+          "summary": "Evidence about an applicant is processed only after the applicant consents, and the consent is recorded with its time and method."
+        }
+      ]
+    },
+    {
+      "id": "sanctions-lists",
+      "title": "Public sanctions lists (UN Security Council Consolidated List and national lists)",
+      "url": "https://main.un.org/securitycouncil/en/content/un-sc-consolidated-list",
+      "clauses": [
+        {
+          "id": "screening",
+          "reference": "Consolidated list",
+          "summary": "Lenders must not provide funds to listed persons. Applicants and guarantors are screened by name; a possible match is a question for a person, not a rejection."
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "ALL-CON-01",
+      "title": "Applicant consent recorded before processing",
+      "severity": "critical",
+      "stage": "pre_decision",
+      "check": {
+        "all": [
+          {
+            "fact": "consent.given",
+            "op": "true"
+          },
+          {
+            "fact": "consent.before_evidence",
+            "op": "true"
+          }
+        ]
+      },
+      "on_fail": "fail",
+      "pass_detail": "Consent was recorded before any evidence was processed.",
+      "fail_detail": "Consent is missing or was recorded after evidence was uploaded. Stop processing and obtain consent.",
+      "cites": [
+        {
+          "source": "ll-data-policy",
+          "clause": "consent"
+        }
+      ]
+    },
+    {
+      "id": "ALL-SAN-01",
+      "title": "Applicant and guarantor screened against sanctions lists",
+      "severity": "critical",
+      "stage": "pre_decision",
+      "check": {
+        "fact": "screening.matches",
+        "op": "empty"
+      },
+      "on_fail": "review",
+      "pass_detail": "No names matched the sanctions lists.",
+      "fail_detail": "A name is similar to a listed person. Verify identity documents before deciding.",
+      "cites": [
+        {
+          "source": "sanctions-lists",
+          "clause": "screening"
+        }
+      ]
+    }
+  ]
+}

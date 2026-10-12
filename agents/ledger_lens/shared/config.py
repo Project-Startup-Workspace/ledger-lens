@@ -67,6 +67,8 @@ class Settings(BaseSettings):
 
     # Domain thresholds
     rule_packs_dir: Path = REPO_ROOT / "rule-packs"
+    # A synthetic sample; production points this at the official consolidated lists.
+    sanctions_list_path: Path = REPO_ROOT / "rule-packs" / "common" / "sanctions-sample.json"
     # Local training writes risk-local-v1; `ml/` explains how to export a BigQuery ML model.
     risk_model_path: Path = REPO_ROOT / "ml" / "artifacts" / "risk-local-v1.json"
     fixtures_dir: Path = REPO_ROOT / "demo-data" / "fixtures"
