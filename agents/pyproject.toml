@@ -5,8 +5,15 @@ description = "Agents and API that turn informal business evidence into an audit
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "google-genai>=2.29",
   "pydantic>=2.11",
   "pydantic-settings>=2.9",
+]
+
+[project.optional-dependencies]
+# Google Cloud backends; local mode runs without them.
+gcp = [
+  "google-cloud-modelarmor>=0.3",
 ]
 
 [dependency-groups]
