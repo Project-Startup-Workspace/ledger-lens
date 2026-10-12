@@ -303,11 +303,13 @@ class OfficerDecision(Contract):
 
 
 class Explanation(Contract):
-    officer_report: str  # Markdown
+    """The borrower's explanation. The officer report is built on demand from the case."""
+
     borrower_text: str
     borrower_language: str
-    translated: bool  # False when the borrower text fell back to English
+    translated: bool  # False when the borrower text fell back to the English template
     audio_available: bool = False
+    written_by: str  # "<model>/<prompt version>", or "template"
 
 
 class CaseStatus(StrEnum):

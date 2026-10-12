@@ -1,20 +1,25 @@
 """Explanation agent: an officer report and a borrower explanation for one case.
 
-The officer report is assembled from the case deterministically, so it never contains
-anything the agents did not produce. Only the borrower text is written by Gemini, from
-a short list of checked facts; without a model it falls back to an English template.
+The officer report is assembled from the current case on demand, so it never goes
+stale and never contains anything the agents did not produce. Only the borrower text
+is written by Gemini, from a short list of checked facts. Its output is screened and
+every number in it must appear in those facts; otherwise the English template is used.
 """
 
 import logging
+import re
 
 from ledger_lens.explain import prompts
 from ledger_lens.explain.schemas import WireExplanation
-from ledger_lens.shared.config import Settings
+from ledger_lens.shared.config import LlmProvider, Settings
 from ledger_lens.shared.llm import LlmClient, LlmError, LlmUnavailableError
+from ledger_lens.shared.safety import SafetyScreen
 from ledger_lens.shared.schemas import CreditFile, Explanation, FindingStatus
 
 log = logging.getLogger(__name__)
 
+TEMPLATE = "template"
+_NUMBER = re.compile(r"\d[\d,.\s]*\d|\d")
 _RECOMMENDATION_WORDS = {
     "approve": "looks strong enough to recommend",
     "refer": "needs a closer look by the loan officer",
@@ -22,31 +27,48 @@ _RECOMMENDATION_WORDS = {
 }
 
 
+class UnsupportedLanguageError(ValueError):
+    pass
+
+
+def normalise_language(language: str) -> str:
+    """'EN', 'en-LK' and 'en_lk' all mean 'en'; anything unsupported is rejected."""
+    code = language.strip().lower().replace("_", "-").split("-")[0]
+    if code not in prompts.LANGUAGES:
+        supported = ", ".join(sorted(prompts.LANGUAGES))
+        raise UnsupportedLanguageError(f"language '{language}' is not supported ({supported})")
+    return code
+
+
 class ExplainAgent:
-    def __init__(self, llm: LlmClient, settings: Settings) -> None:
+    def __init__(self, llm: LlmClient, safety: SafetyScreen, settings: Settings) -> None:
         self._llm = llm
+        self._safety = safety
         self._settings = settings
+        self._can_speak = settings.enable_tts and settings.llm_provider is not LlmProvider.OFFLINE
 
     def explain(self, case: CreditFile, language: str | None = None) -> Explanation:
-        """Write both explanations; `language` defaults to the applicant's preference."""
-        target = language or case.applicant.preferred_language
+        """Write the borrower explanation; `language` defaults to the applicant's own."""
+        target = normalise_language(language or case.applicant.preferred_language)
         facts = borrower_facts(case)
-        text, translated = self._borrower_text(target, facts)
+        text, written_by = self._borrower_text(target, facts)
+        actual = target if written_by != TEMPLATE else "en"
         return Explanation(
-            officer_report=officer_report(case),
             borrower_text=text,
-            borrower_language=target if translated else "en",
-            translated=translated,
-            audio_available=self._settings.enable_tts and translated,
+            borrower_language=actual,
+            translated=actual == target,
+            audio_available=self._can_speak and actual in prompts.TTS_LOCALES,
+            written_by=written_by,
         )
 
     def speak(self, text: str, language: str) -> bytes:
         """WAV audio of the borrower explanation, for reading it aloud."""
-        if not self._settings.enable_tts:
-            raise LlmUnavailableError("speech is turned off (LL_ENABLE_TTS=false)")
-        return self._llm.speak(text=text, language=language)
+        locale = prompts.TTS_LOCALES.get(normalise_language(language))
+        if not self._can_speak or locale is None:
+            raise LlmUnavailableError(f"speech is not available for '{language}'")
+        return self._llm.speak(text=text, language=locale)
 
-    def _borrower_text(self, language: str, facts: list[str]) -> tuple[str, bool]:
+    def _borrower_text(self, language: str, facts: list[str]) -> tuple[str, str]:
         try:
             wire = self._llm.generate(
                 task="explain_borrower",
@@ -55,10 +77,35 @@ class ExplainAgent:
                 prompt=prompts.borrower_prompt(language, "\n".join(f"- {f}" for f in facts)),
                 schema=WireExplanation,
             )
-            return wire.borrower_text.strip(), True
-        except (LlmUnavailableError, LlmError) as exc:
-            log.info("borrower explanation fell back to template", extra={"reason": str(exc)})
-            return template_text(facts), language == "en"
+        except LlmUnavailableError:
+            return template_text(facts), TEMPLATE
+        except LlmError:
+            log.warning("borrower explanation failed; using the English template", exc_info=True)
+            return template_text(facts), TEMPLATE
+        text = wire.borrower_text.strip()
+        if problem := self._reject_reason(text, facts):
+            log.warning("borrower explanation rejected", extra={"reason": problem})
+            return template_text(facts), TEMPLATE
+        return text, f"{self._settings.model_reason}/{prompts.PROMPT_VERSION}"
+
+    def _reject_reason(self, text: str, facts: list[str]) -> str | None:
+        """Why model text must not reach the borrower, or None when it is acceptable."""
+        if not text:
+            return "empty"
+        if len(text.split()) > 2 * prompts.MAX_WORDS:
+            return "too long"
+        if self._safety.screen(text).flagged:
+            return "failed safety screen"
+        known = {_digits(n) for n in _NUMBER.findall(" ".join(facts))}
+        invented = {_digits(n) for n in _NUMBER.findall(text)} - known
+        # Small counts ("3 reasons", "2 weeks") are fine; amounts must come from the facts.
+        if any(len(n) > 2 for n in invented):
+            return "number not in the facts"
+        return None
+
+
+def _digits(number: str) -> str:
+    return re.sub(r"\D", "", number)
 
 
 def borrower_facts(case: CreditFile) -> list[str]:
@@ -90,7 +137,7 @@ def template_text(facts: list[str]) -> str:
 
 
 def officer_report(case: CreditFile) -> str:
-    """Markdown summary of every agent's output, for the officer and the audit pack."""
+    """Markdown summary of the case as it stands now, for the officer and the audit pack."""
     lines = [f"# Credit file {case.case_id}", ""]
     lines.append(
         f"**Applicant:** {case.applicant.business_name} ({case.applicant.business_type}), "
@@ -100,6 +147,10 @@ def officer_report(case: CreditFile) -> str:
         f"**Request:** {case.loan.amount:,.0f} {case.loan.currency} over "
         f"{case.loan.tenor_months} months at {case.loan.annual_rate_pct:g}% a year."
     )
+    warnings = [(x.evidence_id, w) for x in case.extractions for w in x.warnings]
+    if warnings:
+        lines += ["", "## Evidence warnings"]
+        lines += [f"- `{evidence_id}`: {warning}" for evidence_id, warning in warnings]
     if flow := case.cash_flow:
         lines += [
             "",
@@ -111,13 +162,14 @@ def officer_report(case: CreditFile) -> str:
     if check := case.consistency:
         lines += ["", "## Consistency"]
         if check.status == "insufficient_data":
-            lines.append("Not verified: " + " ".join(check.notes or ["no statement compared."]))
+            lines.append("Not verified against a statement.")
         else:
             lines.append(f"{len(check.flags)} of {check.weeks_compared} weeks flagged.")
             lines += [
                 f"- **{f.severity}**: {f.explanation} Ask: _{f.officer_question}_"
                 for f in check.flags
             ]
+        lines += [f"- Note: {note}" for note in check.notes]
     if risk := case.risk:
         lines += [
             "",
@@ -141,4 +193,12 @@ def officer_report(case: CreditFile) -> str:
             f"{report.count(FindingStatus.PENDING)} pending.",
         ]
         lines += [f"- {f.rule_id} {f.title}: {f.detail}" for f in open_items]
+    if decision := case.decision:
+        lines += [
+            "",
+            "## Decision",
+            f"**{decision.outcome}** by `{decision.officer_id}`"
+            + (" (overrides the recommendation)" if decision.overridden else "")
+            + f": {decision.reason}",
+        ]
     return "\n".join(lines) + "\n"
