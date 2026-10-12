@@ -330,7 +330,7 @@ def write_wallet(spec: CaseSpec, lines: list[Line], out: Path, rng: random.Rando
         if rng.random() < 0.25:
             rows.append([line.day.isoformat(), "Transfer to supplier", int(inflow * 0.6), "out"])
     with (out / "wallet-statement.csv").open("w", newline="") as fh:
-        writer = csv.writer(fh)
+        writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["date", "description", "amount", "direction"])
         writer.writerows(rows)
 

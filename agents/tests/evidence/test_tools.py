@@ -95,3 +95,22 @@ def test_parse_wallet_csv_reports_unreadable_rows() -> None:
 def test_parse_wallet_csv_requires_core_columns() -> None:
     entries, warnings = parse_wallet_csv(b"when,how much\n", "ev")
     assert entries == [] and warnings
+
+
+def test_parse_wallet_csv_skips_ragged_rows() -> None:
+    data = b"date,description,amount,direction\n2026-08-10,QR,1000\n2026-08-10,QR,5,in,extra\n"
+    entries, warnings = parse_wallet_csv(data, "ev")
+    assert entries == [] and len(warnings) == 2
+
+
+def test_parse_wallet_csv_rejects_non_numbers_and_sign_conflicts() -> None:
+    data = b"date,amount,direction\n2026-08-10,NaN,in\n2026-08-10,Infinity,\n2026-08-11,-500,in\n"
+    entries, warnings = parse_wallet_csv(data, "ev")
+    assert entries == [] and len(warnings) == 3
+
+
+def test_parse_wallet_csv_reports_non_utf8_files() -> None:
+    entries, warnings = parse_wallet_csv(
+        "date,amount\n2026-08-10,5 caf\xe9\n".encode("cp1252"), "ev"
+    )
+    assert entries == [] and "UTF-8" in warnings[0]

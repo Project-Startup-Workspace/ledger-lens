@@ -45,7 +45,11 @@ def parse_wallet_csv(data: bytes, evidence_id: str) -> tuple[list[LedgerEntry], 
     A signed amount without a direction column is also accepted. Rows that cannot be
     read are reported as warnings rather than guessed.
     """
-    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return [], ["The file is not a UTF-8 CSV. Export it again as 'CSV UTF-8'."]
+    reader = csv.DictReader(io.StringIO(text))
     fields = {name.strip().lower() for name in reader.fieldnames or []}
     if not {"date", "amount"} <= fields:
         return [], ["CSV needs at least 'date' and 'amount' columns."]
@@ -53,16 +57,27 @@ def parse_wallet_csv(data: bytes, evidence_id: str) -> tuple[list[LedgerEntry], 
     entries: list[LedgerEntry] = []
     warnings: list[str] = []
     for line_no, raw in enumerate(reader, start=2):
-        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        # DictReader marks short rows with None values and long rows with a None key.
+        if None in raw or None in raw.values():
+            warnings.append(f"Row {line_no} skipped: wrong number of columns.")
+            continue
+        row = {k.strip().lower(): v.strip() for k, v in raw.items()}
         try:
             amount = Decimal(row["amount"].replace(",", ""))
             day = date.fromisoformat(row["date"])
         except (InvalidOperation, ValueError):
             warnings.append(f"Row {line_no} skipped: unreadable date or amount.")
             continue
-        direction = _direction(row.get("direction", ""), amount)
+        if not amount.is_finite():
+            warnings.append(f"Row {line_no} skipped: amount is not a number.")
+            continue
+        word = row.get("direction", "").lower()
+        direction = _direction(word, amount)
         if direction is None:
-            warnings.append(f"Row {line_no} skipped: unknown direction '{row['direction']}'.")
+            warnings.append(f"Row {line_no} skipped: unknown direction '{word}'.")
+            continue
+        if word and amount < 0:
+            warnings.append(f"Row {line_no} skipped: negative amount conflicts with '{word}'.")
             continue
         entries.append(
             LedgerEntry(
@@ -79,7 +94,6 @@ def parse_wallet_csv(data: bytes, evidence_id: str) -> tuple[list[LedgerEntry], 
 
 
 def _direction(word: str, amount: Decimal) -> Direction | None:
-    word = word.lower()
     if word in _IN_WORDS or (not word and amount >= 0):
         return Direction.IN
     if word in _OUT_WORDS or (not word and amount < 0):
