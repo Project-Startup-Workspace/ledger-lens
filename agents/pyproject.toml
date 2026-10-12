@@ -5,6 +5,7 @@ description = "Agents and API that turn informal business evidence into an audit
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "google-auth[requests]>=2.38",
   "google-genai>=2.29",
   "pydantic>=2.11",
   "pydantic-settings>=2.9",
@@ -19,6 +20,7 @@ gcp = [
 
 [dependency-groups]
 dev = [
+  "jsonschema>=4.23",  # validates rule packs against rule-packs/schema.json in tests
   "mypy>=1.15",
   "numpy>=2.2",  # risk model training only; scoring is pure Python
   "pillow>=11.2",  # demo data generation only

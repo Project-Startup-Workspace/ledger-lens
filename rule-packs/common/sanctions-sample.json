@@ -1,0 +1,8 @@
+{
+  "description": "Synthetic sample entries for local development and the demo. Production loads the official lists.",
+  "entries": [
+    { "name": "Tran Van Hung", "list": "SAMPLE-LIST", "reference": "SAMPLE-0001" },
+    { "name": "Viktor Example", "list": "SAMPLE-LIST", "reference": "SAMPLE-0002" },
+    { "name": "Imaginary Trading Company", "list": "SAMPLE-LIST", "reference": "SAMPLE-0003" }
+  ]
+}

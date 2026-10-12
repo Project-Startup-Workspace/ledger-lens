@@ -1,0 +1,66 @@
+{
+  "jurisdiction": "lk",
+  "name": "Sri Lanka",
+  "version": "2026.10.1",
+  "last_checked": "2026-10-12",
+  "review_status": "draft",
+  "sources": [
+    {
+      "id": "lk-mcra-2026",
+      "title": "Microfinance and Credit Regulatory Authority Act, No. 9 of 2026",
+      "url": "https://www.dailymirror.lk/breaking-news/New-microfinance-authority-law-comes-into-force-replacing-2016-Act/108-335939",
+      "clauses": [
+        {
+          "id": "licensing",
+          "reference": "Licensing provisions (section to be confirmed by counsel)",
+          "summary": "Microfinance and money-lending business may be carried on only by a person licensed by the Microfinance and Credit Regulatory Authority."
+        },
+        {
+          "id": "blank-documents",
+          "reference": "Borrower protection provisions (section to be confirmed by counsel)",
+          "summary": "A lender must not obtain a borrower's signature on a blank or incomplete document."
+        },
+        {
+          "id": "minors",
+          "reference": "Borrower protection provisions (section to be confirmed by counsel)",
+          "summary": "A lender must not enter into a credit agreement with a person under eighteen."
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "LK-LIC-01",
+      "title": "Lender holds a licence from the Authority",
+      "severity": "critical",
+      "stage": "pre_decision",
+      "check": { "fact": "lender.licence", "op": "present" },
+      "on_fail": "fail",
+      "pass_detail": "The lender's licence number is on file.",
+      "fail_detail": "No licence number is configured for this lender in Sri Lanka.",
+      "cites": [{ "source": "lk-mcra-2026", "clause": "licensing" }]
+    },
+    {
+      "id": "LK-DOC-01",
+      "title": "No signature on a blank or incomplete agreement",
+      "severity": "critical",
+      "stage": "post_decision",
+      "check": { "fact": "disclosure.blank_fields", "op": "empty" },
+      "on_fail": "fail",
+      "pass_detail": "Every field of the agreement was complete when presented for signature.",
+      "fail_detail": "The agreement has blank fields. Complete them before the borrower signs.",
+      "cites": [{ "source": "lk-mcra-2026", "clause": "blank-documents" }]
+    },
+    {
+      "id": "LK-AGE-01",
+      "title": "Applicant is at least 18",
+      "severity": "critical",
+      "stage": "pre_decision",
+      "check": { "fact": "applicant.age", "op": "gte", "value": 18 },
+      "on_fail": "fail",
+      "pass_detail": "The applicant is an adult.",
+      "fail_detail": "The applicant is under 18. No credit agreement may be made.",
+      "cites": [{ "source": "lk-mcra-2026", "clause": "minors" }]
+    }
+  ]
+}
