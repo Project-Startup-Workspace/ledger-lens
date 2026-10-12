@@ -144,11 +144,15 @@ class ConsistencyFlag(Contract):
 
 
 class ConsistencyReport(Contract):
+    # insufficient_data: no usable statement, or too few comparable weeks for a baseline
+    status: Literal["compared", "insufficient_data"]
+    statement_evidence_id: str | None  # the one statement compared, to avoid double counting
     weeks_compared: int
     baseline_ratio: float | None
     flags: list[ConsistencyFlag]
     mismatch_share: float = Field(ge=0, le=1)
-    consistency_score: float = Field(ge=0, le=1)  # 1 means fully consistent
+    consistency_score: float | None = Field(ge=0, le=1)  # 1 = fully consistent; None = unchecked
+    notes: list[str] = []
 
 
 # --- Risk --------------------------------------------------------------------------------------
