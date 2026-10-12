@@ -20,8 +20,8 @@ jobs:
       run:
         working-directory: agents
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - run: uv sync --locked --all-extras
@@ -33,13 +33,13 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # The gitleaks GitHub Action needs a paid licence for org repos; the CLI does not.
       - name: Scan history for secrets
         env:
-          GITLEAKS_VERSION: 8.24.2
+          GITLEAKS_VERSION: 8.30.1
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks git --redact --verbose .
