@@ -1,19 +1,20 @@
 # Consistency agent
 
-Catches the main fraud risk, a notebook written the night before, by checking it against records the applicant cannot easily fake.
+Catches the main fraud risk, a notebook written the night before, by checking it against a record the applicant cannot easily fake.
 
 | | |
 |---|---|
-| Input | All `ExtractionResult`s in the case |
+| Input | All `ExtractionResult`s in the case, and the case currency |
 | Output | `ConsistencyReport`: flagged weeks, each with an explanation and a question for the officer |
 | Model | None. Fully deterministic |
 
 Method:
-1. Total notebook sales and wallet/bank inflows per ISO week, over the weeks both cover.
-2. The applicant's usual wallet share is the median of weekly `wallet / notebook` ratios.
-3. A week is flagged when its share departs from the median by more than `LL_CONSISTENCY_TOLERANCE` (default 35%). Wallet money in a week with no notebook sales is always flagged.
-4. Severity: above 50% deviation is high, above 42% medium, otherwise low. The score is 1 minus the severity-weighted share of flagged weeks.
+1. Choose one statement: the wallet or bank export covering the longest period. Summing several would double count transfers between accounts.
+2. Compare only weeks that both the notebook and the statement cover from Monday to Sunday. Skip weeks containing an unreadable notebook line rather than treating them as blank.
+3. The applicant's usual wallet share is the median of weekly `wallet ÷ notebook` ratios.
+4. A week is flagged when `|ln(share ÷ usual share)|` exceeds `ln(1 + LL_CONSISTENCY_TOLERANCE)`, so 2× notebook inflation and 2× wallet excess are judged equally. Severity: above 2× the threshold is high, above 1.5× medium, otherwise low.
+5. Wallet money arriving in a week with no notebook sales is flagged, graded by its size against a typical week's inflow. Trivial amounts are ignored.
 
-With fewer than three comparable weeks, or no statement, the status is `insufficient_data`. The risk model then treats the notebook as unverified rather than consistent.
+The status is `insufficient_data`, with `consistency_score = null`, when there is no statement, fewer than three comparable weeks, or a usual wallet share of zero. The risk model then treats the notebook as unverified, not as consistent or inconsistent.
 
 Flags never reject an application. They tell the officer which question to ask.

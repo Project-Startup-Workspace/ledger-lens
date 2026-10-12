@@ -1,8 +1,8 @@
-"""Consistency agent: cross-checks notebook figures against independent statements."""
+"""Consistency agent: cross-checks notebook figures against an independent statement."""
 
 import logging
 
-from ledger_lens.consistency.tools import compare, weekly_inflows
+from ledger_lens.consistency.tools import WeeklySeries, compare, weekly_series
 from ledger_lens.shared.config import Settings
 from ledger_lens.shared.schemas import ConsistencyReport, EvidenceKind, ExtractionResult
 
@@ -18,19 +18,43 @@ class ConsistencyAgent:
         self._settings = settings
 
     def check(self, extractions: list[ExtractionResult], currency: str) -> ConsistencyReport:
-        """Compare all notebook pages with all wallet and bank statements in the case."""
+        """Compare all notebook pages in the case with its best single statement.
+
+        Only one statement is used: summing several would double count transfers between
+        accounts and duplicate uploads. The one covering the longest period wins.
+        """
         min_conf = self._settings.min_extraction_confidence
-        notebook = weekly_inflows(
-            (e for x in extractions if x.kind is EvidenceKind.NOTEBOOK for e in x.entries),
+        same_currency = [x for x in extractions if x.currency.upper() == currency.upper()]
+        notes = []
+        if len(same_currency) < len(extractions):
+            notes.append("Documents in another currency were left out of the comparison.")
+
+        notebook = weekly_series(
+            (e for x in same_currency if x.kind is EvidenceKind.NOTEBOOK for e in x.entries),
             min_conf,
         )
-        wallet = weekly_inflows(
-            (e for x in extractions if x.kind in INDEPENDENT_KINDS for e in x.entries),
-            min_conf,
-        )
-        report = compare(notebook, wallet, self._settings.consistency_tolerance, currency)
-        log.info(
-            "consistency checked",
-            extra={"status": report.status, "flags": len(report.flags)},
-        )
+        statements = [
+            (x.evidence_id, weekly_series(x.entries, min_conf))
+            for x in same_currency
+            if x.kind in INDEPENDENT_KINDS and x.entries
+        ]
+        if not statements:
+            report = compare(notebook, weekly_series([], min_conf), self._tolerance, currency)
+        else:
+            statement_id, wallet = max(statements, key=lambda s: _span_days(s[1]))
+            if len(statements) > 1:
+                notes.append("Several statements were uploaded; the longest one was compared.")
+            report = compare(notebook, wallet, self._tolerance, currency, statement_id)
+        report = report.model_copy(update={"notes": [*notes, *report.notes]})
+        log.info("consistency checked", extra={"status": report.status, "flags": len(report.flags)})
         return report
+
+    @property
+    def _tolerance(self) -> float:
+        return self._settings.consistency_tolerance
+
+
+def _span_days(series: WeeklySeries) -> int:
+    if series.first_day is None or series.last_day is None:
+        return 0
+    return (series.last_day - series.first_day).days
