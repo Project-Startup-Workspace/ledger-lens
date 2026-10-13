@@ -52,6 +52,15 @@ export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.delete(OFFICER_HEADER); // never trust a client-supplied identity
 
+  // Identity-Aware Proxy takes precedence: when it fronts the app, its verified
+  // assertion is the only identity, whatever else is configured.
+  if (process.env.LL_IAP_AUDIENCE) {
+    const officer = await iapOfficer(request, process.env.LL_IAP_AUDIENCE);
+    if (!officer) return new NextResponse("Identity-Aware Proxy sign-in required", { status: 401 });
+    headers.set(OFFICER_HEADER, officer);
+    return NextResponse.next({ request: { headers } });
+  }
+
   const known = users();
   if (known.size > 0) {
     const encoded = request.headers.get("authorization")?.replace(/^Basic /, "") ?? "";
@@ -70,10 +79,6 @@ export async function proxy(request: NextRequest) {
       });
     }
     headers.set(OFFICER_HEADER, name);
-  } else if (process.env.LL_IAP_AUDIENCE) {
-    const officer = await iapOfficer(request, process.env.LL_IAP_AUDIENCE);
-    if (!officer) return new NextResponse("Identity-Aware Proxy sign-in required", { status: 401 });
-    headers.set(OFFICER_HEADER, officer);
   }
   return NextResponse.next({ request: { headers } });
 }

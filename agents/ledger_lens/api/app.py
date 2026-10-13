@@ -5,6 +5,11 @@ calls inside the agents are blocking SDK calls.
 """
 
 import hmac
+import json
+import math
+import threading
+import time
+import urllib.request
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, Any
@@ -64,7 +69,7 @@ CSV_ALIASES = {
 }
 ANONYMOUS_OFFICER = "officer"
 IAP_JWT_HEADER = "x-goog-iap-jwt-assertion"
-IAP_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key-jwk"
+IAP_KEYS_URL = "https://www.gstatic.com/iap/verify/public_key"  # PEM, by key id
 IAP_ISSUER = "https://cloud.google.com/iap"
 OFFICER_HEADER = "x-officer-id"
 
@@ -93,21 +98,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def officer(request: Request) -> str:
         """Who is acting, from a trusted source only; never from the request body.
 
-        Behind Identity-Aware Proxy, the officer is the email in IAP's signed JWT, which
-        is verified; a plain header could be sent by anyone who reaches the service
-        directly. The web app's server-side proxy, which holds the API token, may set
-        X-Officer-Id.
+        1. An IAP assertion, verified against Google's keys, when the API itself sits
+           behind Identity-Aware Proxy (LL_API_IAP_AUDIENCE).
+        2. X-Officer-Id from the web app's server-side proxy, which holds the API token
+           and has already signed the officer in.
         """
-        if settings.iap_audience:
-            token = request.headers.get(IAP_JWT_HEADER)
-            if not token:
-                raise HTTPException(401, "Identity-Aware Proxy assertion missing")
+        token = request.headers.get(IAP_JWT_HEADER)
+        if settings.api_iap_audience and token:
             try:
-                return verify_iap_jwt(token, settings.iap_audience)
+                return verify_iap_jwt(token, settings.api_iap_audience)
             except ValueError:
                 raise HTTPException(401, "invalid Identity-Aware Proxy assertion") from None
         if settings.api_token and (forwarded := request.headers.get(OFFICER_HEADER)):
             return forwarded[:64]
+        if settings.api_iap_audience:
+            raise HTTPException(401, "Identity-Aware Proxy sign-in required")
         return ANONYMOUS_OFFICER
 
     Coord = Annotated[Coordinator, Depends(coord)]  # noqa: N806 - a type alias
@@ -239,14 +244,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def verify_iap_jwt(token: str, audience: str) -> str:
-    """The signed-in email from an IAP assertion; ValueError if it is not genuine."""
-    from google.auth.transport import requests as google_requests
-    from google.oauth2 import id_token
+class _IapKeys:
+    """IAP's public keys (PEM, by key id), fetched at most once an hour."""
 
-    claims = id_token.verify_token(
-        token, google_requests.Request(), audience=audience, certs_url=IAP_CERTS_URL
-    )
+    TTL_S = 3600.0
+
+    def __init__(self) -> None:
+        self._keys: dict[str, str] = {}
+        self._fetched_at = -math.inf
+        self._lock = threading.Lock()
+
+    def get(self) -> dict[str, str]:
+        with self._lock:
+            if time.monotonic() - self._fetched_at > self.TTL_S:
+                self._keys = fetch_iap_keys()
+                self._fetched_at = time.monotonic()
+            return self._keys
+
+
+def fetch_iap_keys() -> dict[str, str]:
+    with urllib.request.urlopen(IAP_KEYS_URL, timeout=10) as response:
+        keys = json.loads(response.read())
+    if not isinstance(keys, dict):
+        raise ValueError("unexpected IAP key format")
+    return {str(k): str(v) for k, v in keys.items()}
+
+
+_iap_keys = _IapKeys()
+
+
+def verify_iap_jwt(token: str, audience: str) -> str:
+    """The signed-in email from an IAP assertion; ValueError if it is not genuine.
+
+    Any failure (bad signature, wrong audience or issuer, expiry, malformed token, keys
+    unreachable) is reported as ValueError, so callers answer 401, never 500.
+    """
+    import google.auth.jwt
+
+    try:
+        claims = google.auth.jwt.decode(  # type: ignore[no-untyped-call]
+            token, certs=_iap_keys.get(), audience=audience
+        )
+    except Exception as exc:  # the library raises several types; all mean "not genuine"
+        raise ValueError(f"IAP assertion rejected: {type(exc).__name__}") from exc
     if claims.get("iss") != IAP_ISSUER or not claims.get("email"):
         raise ValueError("not an Identity-Aware Proxy assertion")
     return str(claims["email"])

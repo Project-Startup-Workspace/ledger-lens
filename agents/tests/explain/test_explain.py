@@ -128,7 +128,7 @@ def agent(llm: Any, settings: Settings) -> ExplainAgent:
 def test_borrower_text_uses_the_model_in_the_applicant_language(online: Settings) -> None:
     llm = RecordingLlm()
     explanation = agent(llm, online).explain(assessed_case())
-    assert explanation.borrower_language == "ta" and explanation.translated
+    assert explanation.borrower_language == "ta"
     assert explanation.audio_available and explanation.written_by.endswith("/explain-v1")
     assert "Language: Tamil" in llm.prompts[0]
 
@@ -143,7 +143,7 @@ def test_prompt_carries_checked_facts_but_no_personal_identifiers(online: Settin
 
 def test_offline_falls_back_to_english_template_without_audio(settings: Settings) -> None:
     explanation = agent(build_llm(settings), settings).explain(assessed_case(), "en")
-    assert not explanation.translated and explanation.borrower_language == "en"
+    assert explanation.borrower_language == "en"
     assert not explanation.audio_available and explanation.written_by == TEMPLATE
     assert "A loan officer makes the final decision." in explanation.borrower_text
 
@@ -154,7 +154,7 @@ def test_offline_falls_back_to_english_template_without_audio(settings: Settings
 )
 def test_unsafe_empty_or_ungrounded_text_falls_back(online: Settings, reply: str) -> None:
     explanation = agent(RecordingLlm(reply=reply), online).explain(assessed_case())
-    assert explanation.written_by == TEMPLATE and not explanation.translated
+    assert explanation.written_by == TEMPLATE
 
 
 def test_model_errors_fall_back_to_template(online: Settings) -> None:

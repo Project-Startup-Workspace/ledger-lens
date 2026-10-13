@@ -259,8 +259,9 @@ class Coordinator:
             raise CaseStateError("upload at least one notebook page before assessing")
         done = {x.evidence_id for x in case.extractions}
         pending = [d for d in case.evidence if d.id not in done]
-        # One reference date for every page of the case: the latest upload, as a local
-        # calendar date in the lender's market, so entries written "today" are accepted.
+        # One reference date for every page read in this assessment: the latest upload, as
+        # a local calendar date in the lender's market, so entries written "today" are
+        # accepted. Pages read in an earlier assessment keep the date they were read with.
         reference = local_date(max(d.uploaded_at for d in case.evidence), case.jurisdiction)
 
         def read(doc: EvidenceDocument) -> ExtractionResult:
@@ -271,19 +272,27 @@ class Coordinator:
                 currency=case.loan.currency,
             )
 
-        # Pages are independent, so model calls run in parallel. Each call runs in a copy
-        # of this context, so its log lines keep the case id and name masking. Results
-        # are saved in upload order; if one page fails, the pages read before it are kept
-        # and the rest are cancelled, so a retry does not pay for them again.
+        # Pages are independent, so model calls run in parallel, each in a copy of this
+        # context so its log lines keep the case id and name masking. On the first failure
+        # pages not yet started are cancelled; every page that did succeed is saved, in
+        # upload order, so a retry pays only for the pages that failed.
         with ThreadPoolExecutor(max_workers=READ_WORKERS) as pool:
             futures = [pool.submit(contextvars.copy_context().run, read, d) for d in pending]
-            try:
-                for doc, future in zip(pending, futures, strict=True):
-                    self._record_read(case, doc, future.result(), actor)
-            except Exception:
-                for future in futures:
-                    future.cancel()
-                raise
+            for future in futures:
+                if future.exception() is not None:
+                    for later in futures:
+                        later.cancel()
+                    break
+        first_error: BaseException | None = None
+        for doc, future in zip(pending, futures, strict=True):
+            if future.cancelled():
+                continue
+            if (error := future.exception()) is not None:
+                first_error = first_error or error
+                continue
+            self._record_read(case, doc, future.result(), actor)
+        if first_error is not None:
+            raise first_error
         notebook = [
             e for x in case.extractions if x.kind is EvidenceKind.NOTEBOOK for e in x.entries
         ]
@@ -522,7 +531,7 @@ class Coordinator:
                 else LogisticModel.load(path)
             )
             return model_card(model, path)
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             return {"version": version, "status": f"model card unavailable: {exc}"[:500]}
 
     # --- Internals --------------------------------------------------------------------

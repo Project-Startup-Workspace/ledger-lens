@@ -71,7 +71,7 @@ def compare(
     statement_id: str | None = None,
 ) -> ConsistencyReport:
     """Flag weeks whose wallet share departs from the applicant's own median share."""
-    weeks, notes = _comparable_weeks(notebook, wallet)
+    weeks, notes = comparable_weeks(notebook, wallet)
     ratios = {
         w: float(wallet.totals.get(w, Decimal(0)) / notebook.totals[w])
         for w in weeks
@@ -109,7 +109,7 @@ def compare(
     )
 
 
-def _comparable_weeks(notebook: WeeklySeries, wallet: WeeklySeries) -> tuple[list[date], list[str]]:
+def comparable_weeks(notebook: WeeklySeries, wallet: WeeklySeries) -> tuple[list[date], list[str]]:
     """Weeks both sources fully cover, minus weeks where either has an unreadable line.
 
     An unread line understates that week's total, which would look like a mismatch.

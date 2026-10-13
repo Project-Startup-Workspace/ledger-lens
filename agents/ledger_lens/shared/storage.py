@@ -130,7 +130,10 @@ class FirestoreCaseRepository:
             snapshot = ref.get(transaction=transaction)
             if snapshot.exists and snapshot.get("revision") != expected:
                 raise ConcurrentUpdateError(case.case_id)
-            transaction.set(ref, case.model_dump(mode="json") | {"revision": expected + 1})
+            data = case.model_dump(mode="json") | {"revision": expected + 1}
+            # A native timestamp for ordering: the JSON string form does not sort
+            # correctly when fractional seconds are omitted.
+            transaction.set(ref, data | {_ORDER_FIELD: case.updated_at})
 
         case.updated_at = utc_now()
         write(self._client.transaction())
@@ -138,11 +141,22 @@ class FirestoreCaseRepository:
 
     def get(self, case_id: str) -> CreditFile | None:
         snapshot = self._collection.document(check_key(case_id)).get()
-        return CreditFile.model_validate(snapshot.to_dict()) if snapshot.exists else None
+        return _from_document(snapshot.to_dict()) if snapshot.exists else None
 
     def list(self, limit: int = 50) -> list[CreditFile]:
-        query = self._collection.order_by("updated_at", direction="DESCENDING").limit(limit)
-        return [CreditFile.model_validate(doc.to_dict()) for doc in query.stream()]
+        """Most recently updated first. Every document carries the order field, because
+        this repository has written it since the first release that used Firestore."""
+        query = self._collection.order_by(_ORDER_FIELD, direction="DESCENDING").limit(limit)
+        return [_from_document(doc.to_dict()) for doc in query.stream()]
+
+
+_ORDER_FIELD = "_updated"  # storage-only; not part of the CreditFile contract
+
+
+def _from_document(data: dict[str, Any] | None) -> CreditFile:
+    fields = dict(data or {})
+    fields.pop(_ORDER_FIELD, None)
+    return CreditFile.model_validate(fields)
 
 
 def build_blob_store(settings: Settings, bucket: str | None, local_dir: str) -> BlobStore:

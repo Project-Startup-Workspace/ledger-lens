@@ -2,7 +2,12 @@
 
 import logging
 
-from ledger_lens.consistency.tools import WeeklySeries, compare, weekly_series
+from ledger_lens.consistency.tools import (
+    WeeklySeries,
+    comparable_weeks,
+    compare,
+    weekly_series,
+)
 from ledger_lens.shared.config import Settings
 from ledger_lens.shared.schemas import ConsistencyReport, EvidenceKind, ExtractionResult
 
@@ -42,7 +47,9 @@ class ConsistencyAgent:
         if not statements:
             report = compare(notebook, weekly_series([], min_conf), self._tolerance, currency)
         else:
-            statement_id, wallet = max(statements, key=lambda s: _readable_overlap(s[1], notebook))
+            statement_id, wallet = max(
+                statements, key=lambda s: _comparable_overlap(s[1], notebook)
+            )
             if len(statements) > 1:
                 notes.append(
                     "Several statements were uploaded; the one sharing the most readable "
@@ -58,9 +65,11 @@ class ConsistencyAgent:
         return self._settings.consistency_tolerance
 
 
-def _readable_overlap(statement: WeeklySeries, notebook: WeeklySeries) -> int:
-    """Readable statement weeks that the notebook also covers.
+def _comparable_overlap(statement: WeeklySeries, notebook: WeeklySeries) -> int:
+    """Weeks this statement and the notebook can actually be compared on.
 
-    A long statement for another period, or one that cannot be read, verifies nothing.
+    The same rule compare() applies (both fully cover the week, nothing unreadable), so
+    a long statement for another period, or one that cannot be read, ranks last.
     """
-    return len((set(statement.totals) - statement.unreadable_weeks) & set(notebook.totals))
+    weeks, _ = comparable_weeks(notebook, statement)
+    return len(weeks)

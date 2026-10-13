@@ -64,6 +64,18 @@ def test_firestore_case_repository_round_trip_and_conflicts() -> None:
 
 
 @needs_firestore
+def test_firestore_lists_most_recently_updated_first() -> None:
+    from ledger_lens.shared.storage import FirestoreCaseRepository
+
+    repository = FirestoreCaseRepository(PROJECT, collection=f"cases_{uuid.uuid4().hex[:6]}")
+    first, second = make_case(), make_case()
+    repository.save(first)
+    repository.save(second)
+    repository.save(first)  # updated again, so it is now the most recent
+    assert [c.case_id for c in repository.list(2)] == [first.case_id, second.case_id]
+
+
+@needs_firestore
 def test_firestore_audit_store_never_forks_under_concurrent_writers() -> None:
     from ledger_lens.audit_trail.stores import FirestoreAuditStore
 

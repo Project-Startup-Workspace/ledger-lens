@@ -326,9 +326,8 @@ class Explanation(Contract):
 
     borrower_text: str
     borrower_language: str
-    translated: bool  # False when the borrower text fell back to the English template
     audio_available: bool = False
-    written_by: str  # "<model>/<prompt version>", or "template"
+    written_by: str  # "<model>/<prompt version>", or "template" for the English fallback
 
 
 class CaseStatus(StrEnum):

@@ -33,11 +33,9 @@ def artifact_fingerprint(artifact: Path) -> str:
 
 
 def has_passing_bias_report(artifact: Path) -> bool:
-    """A bias report counts only if it passed and was run on exactly this artifact."""
+    """A bias report counts only if it was run on exactly this artifact and passed."""
     report = _read_json(bias_report_path(artifact))
-    return report.get("passes_four_fifths") is True and report.get(
-        "model_fingerprint"
-    ) == artifact_fingerprint(artifact)
+    return bias_report_matches(artifact) and report.get("passes_four_fifths") is True
 
 
 def artifact_for_version(
@@ -48,9 +46,10 @@ def artifact_for_version(
     With `fingerprint`, only the exact artifact counts: a model retrained under the same
     version name is a different model.
     """
-    if not _SAFE_VERSION.fullmatch(version):
-        return None
-    for path in (active_artifact, active_artifact.parent / f"{version}.json"):
+    candidates = [active_artifact]
+    if _SAFE_VERSION.fullmatch(version):  # the version names a file only when it is safe
+        candidates.append(active_artifact.parent / f"{version}.json")
+    for path in candidates:
         if _read_json(path).get("version") != version:
             continue
         if fingerprint is None or artifact_fingerprint(path) == fingerprint:
@@ -64,15 +63,18 @@ def bias_report_matches(artifact: Path) -> bool:
     return report.get("model_fingerprint") == artifact_fingerprint(artifact)
 
 
-def model_record(active_artifact: Path, version: str | None) -> ModelRecord | None:
-    """Governance record for the model version that scored a case.
+def model_record(
+    active_artifact: Path, version: str | None, fingerprint: str | None = None
+) -> ModelRecord | None:
+    """Governance record for the exact artifact that scored a case.
 
     Usually that is the active artifact. A case scored by an earlier version is looked
-    up as `<version>.json` beside it; if that file is gone, the record shows no metrics.
+    up as `<version>.json` beside it; if that artifact is gone or was replaced (another
+    fingerprint), the record shows no metrics, as the audit pack's model card does.
     """
     if not version:
         return None
-    path = artifact_for_version(active_artifact, version)
+    path = artifact_for_version(active_artifact, version, fingerprint)
     if path is None:
         return ModelRecord(version=version, validation_auc=None, bias_report=False)
     metrics = _read_json(path).get("metrics")

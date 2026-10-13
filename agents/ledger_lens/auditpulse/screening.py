@@ -39,8 +39,16 @@ _FOLD = str.maketrans({"đ": "d", "ð": "d", "ł": "l", "ø": "o", "ß": "ss", "
 
 
 def is_latin(name: str) -> bool:
-    """True when every letter in `name` is a Latin letter (accents allowed)."""
-    return all(unicodedata.name(ch, "").startswith("LATIN") for ch in name if ch.isalpha())
+    """True when every letter in `name` is a Latin letter (accents allowed).
+
+    Modifier letters such as the okina (U+02BB, as in Hawaiian and Samoan names) and the
+    ordinal letters (U+00AA, U+00BA) belong to Latin-script names too.
+    """
+    return all(
+        unicodedata.name(ch, "").startswith(("LATIN", "MODIFIER LETTER")) or ch in "ªº"
+        for ch in name
+        if ch.isalpha()
+    )
 
 
 def normalise(name: str) -> str:

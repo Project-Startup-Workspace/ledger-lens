@@ -241,26 +241,71 @@ def test_zip_bombs_are_refused() -> None:
 def test_identity_comes_only_from_a_verified_iap_assertion(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fake_verify(token: str, audience: str) -> str:
-        if token != "signed-by-google":
-            raise ValueError("bad signature")
-        return "chief@lender.example"
+    import math
+    import time
 
-    monkeypatch.setattr("ledger_lens.api.app.verify_iap_jwt", fake_verify)
+    import google.auth.crypt
+    import google.auth.jwt
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from ledger_lens.api import app as api_module
+
+    audience = "/projects/1/global/backendServices/2"
+    key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    public_pem = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
+    monkeypatch.setattr(api_module, "fetch_iap_keys", lambda: {"k1": public_pem})
+    monkeypatch.setattr(api_module._iap_keys, "_fetched_at", -math.inf)
+
+    def token(aud: str) -> str:
+        signer = google.auth.crypt.ES256Signer.from_string(private_pem, key_id="k1")
+        now = int(time.time())
+        claims = {
+            "iss": api_module.IAP_ISSUER,
+            "aud": aud,
+            "email": "chief@lender.example",
+            "iat": now,
+            "exp": now + 600,
+        }
+        return google.auth.jwt.encode(signer, claims).decode()
+
     plain = {"X-Goog-Authenticated-User-Email": "accounts.google.com:mallory@x"}
     client = TestClient(create_app(settings))
     case = client.post("/demo-cases/synthetic-grocer-kandy", headers=plain).json()
     assert client.get(f"/cases/{case['case_id']}/audit").json()["events"][0]["actor"] == "officer"
 
-    settings.iap_audience = "/projects/1/global/backendServices/2"
+    settings.api_iap_audience = audience
     behind_iap = TestClient(create_app(settings))
     assert behind_iap.post("/demo-cases/synthetic-grocer-kandy", headers=plain).status_code == 401
-    forged = {"X-Goog-IAP-JWT-Assertion": "forged"}
-    assert behind_iap.post("/demo-cases/synthetic-grocer-kandy", headers=forged).status_code == 401
-    genuine = {"X-Goog-IAP-JWT-Assertion": "signed-by-google"}
+    for bad in ("forged", token("/projects/9/global/backendServices/9")):
+        headers = {"X-Goog-IAP-JWT-Assertion": bad}
+        assert (
+            behind_iap.post("/demo-cases/synthetic-grocer-kandy", headers=headers).status_code
+            == 401
+        )
+    genuine = {"X-Goog-IAP-JWT-Assertion": token(audience)}
     case = behind_iap.post("/demo-cases/synthetic-grocer-kandy", headers=genuine).json()
     events = behind_iap.get(f"/cases/{case['case_id']}/audit", headers=genuine).json()["events"]
     assert events[0]["actor"] == "chief@lender.example"
+
+    # Calls forwarded by the web app's token-holding proxy still work in IAP mode.
+    settings.api_token = __import__("pydantic").SecretStr("tok")
+    proxied = TestClient(create_app(settings))
+    headers = {"Authorization": "Bearer tok", "X-Officer-Id": "priya"}
+    case = proxied.post("/demo-cases/synthetic-grocer-kandy", headers=headers).json()
+    assert (
+        proxied.get(f"/cases/{case['case_id']}/audit", headers=headers).json()["events"][0]["actor"]
+        == "priya"
+    )
 
 
 def test_case_list_rejects_bad_limits_and_orders_by_activity(settings: Settings) -> None:
@@ -310,7 +355,8 @@ def test_completed_reads_are_kept_when_one_page_fails(
         coordinator.assess(case.case_id)
     read = {x.evidence_id for x in coordinator.get(case.case_id).extractions}
     names = {d.id: d.filename for d in case.evidence}
-    assert {names[i] for i in read} == {"notebook-p1.png", "notebook-p2.png"}
+    kept = {names[i] for i in read}
+    assert {"notebook-p1.png", "notebook-p2.png"} <= kept and "notebook-p3.png" not in kept
 
 
 def test_every_page_is_read_against_one_local_reference_date(
@@ -559,3 +605,130 @@ def test_case_ids_cannot_start_with_a_dash() -> None:
             ),
             consent=Consent(given=True),
         )
+
+
+# --- Verification round -------------------------------------------------------------
+
+
+def test_latin_modifier_letters_are_screenable() -> None:
+    from ledger_lens.auditpulse.screening import is_latin
+
+    assert is_latin("Sa\u02bbu Tuilagi") and is_latin("Mª José")
+    assert not is_latin("කමලා")
+
+
+def test_blank_model_currency_falls_back_to_the_case_currency(settings: Settings) -> None:
+    class Stub:
+        def generate(self, **_: object) -> WireExtraction:
+            entry = WireEntry(
+                date="2026-09-01",
+                description="sale",
+                amount=10,
+                direction="in",
+                confidence=0.9,
+                box_2d=[0, 0, 10, 10],
+                raw_text="10",
+            )
+            return WireExtraction(
+                script="Latin",
+                language="en",
+                currency="  ",
+                entries=[entry],
+                other_text="",
+                warnings=[],
+            )
+
+        def speak(self, **_: object) -> bytes:
+            raise NotImplementedError
+
+    doc = EvidenceDocument(
+        kind=EvidenceKind.NOTEBOOK,
+        filename="p.png",
+        content_type="image/png",
+        sha256="-",
+        blob_key="k",
+    )
+    result = EvidenceAgent(Stub(), HeuristicScreen(), settings).read(  # type: ignore[arg-type]
+        doc, b"img", reference_date=__import__("datetime").date(2026, 10, 12), currency="LKR"
+    )
+    assert result.currency == "LKR" and result.entries[0].confidence == 0.9
+
+
+def test_statement_is_ranked_by_weeks_actually_comparable(settings: Settings) -> None:
+    from datetime import date
+
+    from ledger_lens.consistency.agent import ConsistencyAgent
+    from ledger_lens.shared.schemas import ExtractionResult
+
+    def extraction(eid: str, kind: EvidenceKind, start: date, days: int, skip_every: int = 0):
+        entries = [
+            LedgerEntry(
+                evidence_id=eid,
+                entry_date=start + timedelta(days=i),
+                description="x",
+                amount=Decimal(100 if kind is EvidenceKind.NOTEBOOK else 40),
+                direction=Direction.IN,
+                # every Monday unreadable: wide overlap, but no comparable week at all
+                confidence=0.3 if skip_every and i % 7 == 0 else 1.0,
+            )
+            for i in range(days)
+        ]
+        return ExtractionResult(
+            evidence_id=eid,
+            kind=kind,
+            script="Latin",
+            language="en",
+            currency="LKR",
+            entries=entries,
+            model="m",
+        )
+
+    notebook = extraction("nb", EvidenceKind.NOTEBOOK, date(2026, 7, 6), 56)
+    wide_but_unreadable = extraction("wide", EvidenceKind.WALLET_STATEMENT, date(2026, 7, 6), 56, 1)
+    narrow_clean = extraction("clean", EvidenceKind.WALLET_STATEMENT, date(2026, 7, 13), 28)
+    report = ConsistencyAgent(settings).check([notebook, wide_but_unreadable, narrow_clean], "LKR")
+    assert report.statement_evidence_id == "clean" and report.status == "compared"
+
+
+def test_malformed_bias_report_does_not_break_the_model_card(
+    settings: Settings, tmp_path: Path
+) -> None:
+    artifact = tmp_path / "m.json"
+    artifact.write_text(settings.risk_model_path.read_text())
+    bias_report_path(artifact).write_text("[1, 2]")
+    card = model_card(LogisticModel.load(artifact), artifact)
+    assert card["fairness"] == {"status": "bias report unreadable"}
+
+
+def test_firestore_store_does_not_retry_errors_other_than_contention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("google.cloud.firestore")
+    from ledger_lens.audit_trail import stores
+
+    calls = {"n": 0}
+
+    class FakeDb:
+        def collection(self, _: str) -> "FakeDb":
+            return self
+
+        def document(self, _: str) -> "FakeDb":
+            return self
+
+        def transaction(self, **_: object) -> object:
+            return object()
+
+    def failing_transactional(fn):  # type: ignore[no-untyped-def]
+        def run(_: object) -> None:
+            calls["n"] += 1
+            raise ValueError("cannot commit: bad payload")
+
+        return run
+
+    store = stores.FirestoreAuditStore.__new__(stores.FirestoreAuditStore)
+    store._db = FakeDb()  # type: ignore[attr-defined]
+    store._firestore = __import__("types").SimpleNamespace(transactional=failing_transactional)  # type: ignore[attr-defined]
+    monkeypatch.setattr(stores.time, "sleep", lambda _: None)
+    with pytest.raises(ValueError, match="bad payload"):
+        store.append("case_1", "x", "system", {})
+    assert calls["n"] == 1

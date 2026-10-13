@@ -5,8 +5,6 @@ import re
 import time
 from typing import Any
 
-from pydantic import ValidationError
-
 from ledger_lens.audit_trail.chain import (
     GENESIS,
     AuditEvent,
@@ -20,6 +18,7 @@ from ledger_lens.shared.schemas import CASE_ID_PATTERN, utc_now
 
 _CASE_ID = re.compile(CASE_ID_PATTERN)
 TRANSACTION_ATTEMPTS = 20
+_EXHAUSTED = "Failed to commit transaction"  # google-cloud-firestore's retry-exhausted message
 APPEND_ROUNDS = 5  # each round retries the whole transaction after a jittered pause
 
 
@@ -69,10 +68,11 @@ class FirestoreAuditStore:
             try:
                 result: AuditEvent = write(self._db.transaction(max_attempts=TRANSACTION_ATTEMPTS))
                 return result
-            except ValidationError:
-                raise  # a malformed event fails the same way every time; never retry it
-            except (ValueError, Aborted):  # every attempt aborted, or an aborted read
-                if round_no == APPEND_ROUNDS:
+            except (ValueError, Aborted) as exc:
+                # Retry only contention: an aborted read, or the SDK's "every attempt was
+                # aborted" error. Anything else fails the same way every time.
+                contended = isinstance(exc, Aborted) or str(exc).startswith(_EXHAUSTED)
+                if not contended or round_no == APPEND_ROUNDS:
                     raise
                 time.sleep(random.uniform(0.05, 0.2) * round_no)  # noqa: S311 - jitter only
         raise AssertionError("unreachable")

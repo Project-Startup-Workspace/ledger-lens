@@ -49,10 +49,13 @@ class EvidenceAgent:
     def read(
         self, doc: EvidenceDocument, data: bytes, *, reference_date: date, currency: str
     ) -> ExtractionResult:
-        """Extract every money line from `data`, the bytes of `doc`."""
+        """Extract every money line from `data`, the bytes of `doc`.
+
+        `currency` is the case's ISO code, already normalised by the LoanRequest contract.
+        """
         if doc.content_type in CSV_TYPES or doc.filename.lower().endswith(".csv"):
             entries, warnings = parse_wallet_csv(data, doc.id)
-            script, language, read_currency, other_text = "Latin", "und", currency.upper(), ""
+            script, language, read_currency, other_text = "Latin", "und", currency, ""
             model = "csv-parser"
         else:
             wire = self._llm.generate(
@@ -66,18 +69,18 @@ class EvidenceAgent:
             entries, warnings = _to_entries(wire, doc.id)
             warnings = [*wire.warnings, *warnings]
             script, language, other_text = wire.script, wire.language, wire.other_text
-            read_currency = (wire.currency or currency).strip().upper()
+            read_currency = wire.currency.strip().upper() or currency
             model = f"{self._settings.model_extract}/{prompts.PROMPT_VERSION}"
 
         entries, date_warnings = _within_window(entries, reference_date)
         entries, warnings, flagged = self._screen(entries, warnings, other_text)
-        if read_currency != currency.upper():
+        if read_currency != currency:
             # Never add amounts in another currency into the case totals. The model's
             # value is only quoted when it is a plain currency code: free text from the
             # page must not reach the officer's warnings unscreened.
             shown = read_currency if _CURRENCY_CODE.fullmatch(read_currency) else "another currency"
             warnings.append(
-                f"The document appears to be in {shown}, not {currency.upper()}. "
+                f"The document appears to be in {shown}, not {currency}. "
                 "Its amounts were sent to review instead of the totals."
             )
             entries = [e.model_copy(update={"confidence": 0.0}) for e in entries]

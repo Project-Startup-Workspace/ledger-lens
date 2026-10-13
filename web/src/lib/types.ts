@@ -124,7 +124,6 @@ export interface ComplianceReport {
 export interface Explanation {
   borrower_text: string;
   borrower_language: string;
-  translated: boolean;
   audio_available: boolean;
   written_by: string;
 }

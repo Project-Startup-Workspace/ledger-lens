@@ -59,8 +59,11 @@ class AuditPulse:
         screening = self._sanctions.screen(
             [case.applicant.full_name, case.applicant.guarantor_name or ""]
         )
+        risk = case.risk
         record = model_record(
-            self._settings.risk_model_path, case.risk.model_version if case.risk else None
+            self._settings.risk_model_path,
+            risk.model_version if risk else None,
+            risk.model_fingerprint if risk else None,
         )
         facts = build_facts(case, code, self._settings, screening, record)
         packs = [p for p in (self._packs.common, pack) if p is not None]

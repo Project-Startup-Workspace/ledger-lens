@@ -62,7 +62,7 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
 
 Service accounts: `ledger-lens-runtime` (API, A2A) holds data, model and signing roles; `ledger-lens-web` (the internet-facing web app) can only read its two secrets.
 
-Identity-Aware Proxy (production): put the web app behind IAP, leave `LL_WEB_USERS` unset and set `LL_IAP_AUDIENCE` to the backend service's audience. The app then verifies IAP's signed assertion for every request; it never trusts a plain identity header. Restrict the Cloud Run ingress to the load balancer so IAP cannot be bypassed.
+Identity-Aware Proxy (production): put the web app behind IAP and set the `IAP_AUDIENCE` repository variable to the backend service's audience; the deploy then sets `LL_IAP_AUDIENCE` and stops injecting the Basic sign-in users. The app then verifies IAP's signed assertion for every request; it never trusts a plain identity header. Restrict the Cloud Run ingress to the load balancer so IAP cannot be bypassed.
 
 Access: the web app signs officers in; the API admits traffic at the Cloud Run layer and requires the shared token itself (Cloud Run IAM would otherwise claim the same `Authorization` header); the A2A service requires Google identity tokens.
 

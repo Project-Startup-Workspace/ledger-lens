@@ -56,8 +56,6 @@ class ExplainAgent:
         return Explanation(
             borrower_text=text,
             borrower_language=actual,
-            # Only model-written text counts as translated; template text never does.
-            translated=written_by != TEMPLATE,
             audio_available=self._can_speak and actual in prompts.TTS_LOCALES,
             written_by=written_by,
         )
