@@ -11,7 +11,7 @@ import hashlib
 from pathlib import Path
 from typing import Protocol
 
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -67,6 +67,7 @@ class KmsSigner:
 
         self._client = kms_v1.KeyManagementServiceClient()
         self._name = key_version
+        self._public_pem: bytes | None = None
 
     def sign(self, data: bytes) -> bytes:
         # Ed25519 signs the message itself, so `data` (not a digest) goes in the request.
@@ -74,11 +75,18 @@ class KmsSigner:
         return bytes(response.signature)
 
     def public_key_pem(self) -> bytes:
-        return str(self._client.get_public_key(name=self._name).pem).encode()
+        """Fetched once: a key version's public key never changes."""
+        if self._public_pem is None:
+            self._public_pem = str(self._client.get_public_key(name=self._name).pem).encode()
+        return self._public_pem
 
 
 def verify_signature(public_key_pem: bytes, data: bytes, signature_b64: str) -> bool:
-    key = serialization.load_pem_public_key(public_key_pem)
+    """False for any bad key, signature or encoding: input may come from a tampered pack."""
+    try:
+        key = serialization.load_pem_public_key(public_key_pem)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        return False
     if not isinstance(key, Ed25519PublicKey):
         return False
     try:

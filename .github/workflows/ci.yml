@@ -47,6 +47,31 @@ jobs:
       - run: npm run format:check
       - run: npm run build # includes the TypeScript check
 
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agents
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0 # no floating major tag is published
+        with:
+          enable-cache: true
+      - name: Start the Firestore and Cloud Storage emulators
+        working-directory: .
+        run: |
+          docker run -d --name firestore -p 8681:8681 gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators gcloud emulators firestore start --host-port=0.0.0.0:8681
+          docker run -d --name storage -p 4443:4443 fsouza/fake-gcs-server -scheme http -port 4443 -public-host localhost:4443
+      - run: uv sync --locked --all-extras
+      - name: Wait for the emulators
+        run: timeout 120 sh -c 'until curl -s localhost:8681 && curl -s localhost:4443/storage/v1/b; do sleep 2; done'
+      - name: Integration tests
+        env:
+          FIRESTORE_EMULATOR_HOST: localhost:8681
+          STORAGE_EMULATOR_HOST: http://localhost:4443
+          GOOGLE_CLOUD_PROJECT: ledger-lens-test
+        run: uv run pytest -m integration
+
   images:
     runs-on: ubuntu-latest
     strategy:

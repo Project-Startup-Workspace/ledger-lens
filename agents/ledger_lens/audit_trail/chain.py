@@ -18,10 +18,10 @@ from typing import Any, BinaryIO, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from ledger_lens.shared.pii import mask_value
-from ledger_lens.shared.schemas import utc_now
+from ledger_lens.shared.schemas import CASE_ID_PATTERN, utc_now
 
 GENESIS = "0" * 64
-_CASE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_CASE_ID = re.compile(CASE_ID_PATTERN)
 _TAIL_BYTES = 64 * 1024  # events are small; a payload this large is a bug
 
 

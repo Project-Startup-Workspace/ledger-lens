@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import zipfile
+import zlib
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -19,6 +20,7 @@ from ledger_lens.audit_trail.signing import Signer, fingerprint, verify_signatur
 from ledger_lens.shared.schemas import ComplianceReport, CreditFile, utc_now
 
 MANIFEST = "manifest.json"
+MAX_UNPACKED_BYTES = 100 * 1024 * 1024
 SIGNATURE = "manifest.sig"
 PUBLIC_KEY = "signing-key.pub.pem"
 EVENTS = "audit_events.jsonl"
@@ -115,12 +117,20 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
     Without `trusted_public_key` the signature is checked against the key inside the
     pack, which proves integrity but not origin; `key_trusted` is then False.
     """
-    problems: list[str] = []
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        return _invalid("not a zip file")
+        return _verify(data, trusted_public_key)
+    except (zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError, EOFError):
+        # Corrupt, truncated, encrypted or oddly compressed members: a tampered pack.
+        return _invalid("pack is corrupted or not a readable zip file")
+
+
+def _verify(data: bytes, trusted_public_key: bytes | None) -> PackVerification:
+    problems: list[str] = []
+    archive = zipfile.ZipFile(io.BytesIO(data))
     with archive:
+        # Sizes are declared in the zip directory, so a zip bomb is refused before inflating.
+        if sum(info.file_size for info in archive.infolist()) > MAX_UNPACKED_BYTES:
+            return _invalid("pack is larger than any genuine audit pack")
         names = set(archive.namelist())
         if missing := [n for n in (MANIFEST, SIGNATURE, PUBLIC_KEY) if n not in names]:
             return _invalid(f"missing files: {', '.join(missing)}")
@@ -131,8 +141,15 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
             head = manifest["chain"]["head"]
             case_id = manifest["case_id"]
             required = FORMAT_FILES[manifest.get("format", 1)]
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, AttributeError):
             return _invalid("manifest is not readable or has an unknown format")
+        if not (
+            isinstance(listed, dict)
+            and all(isinstance(v, str) for v in listed.values())
+            and isinstance(head, str)
+            and isinstance(case_id, str)
+        ):
+            return _invalid("manifest fields have the wrong types")
         if missing := [n for n in required if n not in names]:
             return _invalid(f"missing files: {', '.join(missing)}")
 

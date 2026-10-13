@@ -5,11 +5,27 @@ calls inside the agents are blocking SDK calls.
 """
 
 import hmac
+import json
+import logging
+import math
+import threading
+import time
+import urllib.request
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -43,6 +59,7 @@ from ledger_lens.shared.schemas import (
 )
 from ledger_lens.shared.storage import ConcurrentUpdateError
 
+log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf", "text/csv"}
 # Types browsers report for .csv files (Windows says Excel; some pickers send nothing).
@@ -53,7 +70,9 @@ CSV_ALIASES = {
     "",
 }
 ANONYMOUS_OFFICER = "officer"
-IAP_USER_HEADER = "x-goog-authenticated-user-email"
+IAP_JWT_HEADER = "x-goog-iap-jwt-assertion"
+IAP_KEYS_URL = "https://www.gstatic.com/iap/verify/public_key"  # PEM, by key id
+IAP_ISSUER = "https://cloud.google.com/iap"
 OFFICER_HEADER = "x-officer-id"
 
 
@@ -81,13 +100,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def officer(request: Request) -> str:
         """Who is acting, from a trusted source only; never from the request body.
 
-        Behind Identity-Aware Proxy, Google sets the signed-in user's email. The web
-        app's server-side proxy, which holds the API token, may set X-Officer-Id.
+        1. An IAP assertion, verified against Google's keys, when the API itself sits
+           behind Identity-Aware Proxy (LL_API_IAP_AUDIENCE).
+        2. X-Officer-Id from the web app's server-side proxy, which holds the API token
+           and has already signed the officer in.
         """
-        if iap := request.headers.get(IAP_USER_HEADER):
-            return iap.removeprefix("accounts.google.com:")
+        token = request.headers.get(IAP_JWT_HEADER)
+        if settings.api_iap_audience and token:
+            try:
+                return verify_iap_jwt(token, settings.api_iap_audience)
+            except ValueError:
+                raise HTTPException(401, "invalid Identity-Aware Proxy assertion") from None
         if settings.api_token and (forwarded := request.headers.get(OFFICER_HEADER)):
             return forwarded[:64]
+        if settings.api_iap_audience:
+            raise HTTPException(401, "Identity-Aware Proxy sign-in required")
         return ANONYMOUS_OFFICER
 
     Coord = Annotated[Coordinator, Depends(coord)]  # noqa: N806 - a type alias
@@ -123,8 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/cases", tags=["cases"], dependencies=auth)
-    def list_cases(c: Coord, limit: int = 50) -> list[CaseSummary]:
-        return [_summary(case) for case in c.list_cases(min(limit, 200))]
+    def list_cases(c: Coord, limit: Annotated[int, Query(ge=1)] = 50) -> list[CaseSummary]:
+        return [_summary(case) for case in c.list_cases(min(limit, 200))]  # capped, not refused
 
     @app.get("/cases/{case_id}", tags=["cases"], dependencies=auth)
     def get_case(case_id: str, c: Coord) -> CreditFile:
@@ -194,12 +221,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/cases/{case_id}/audit", tags=["audit"], dependencies=auth)
     def audit_events(case_id: str, c: Coord) -> dict[str, Any]:
+        events, verification = c.audit_log(case_id)
         return {
-            "verification": c.verify_audit_chain(case_id),
-            "events": [e.model_dump(mode="json") for e in c.audit_events(case_id)],
+            "verification": verification.model_dump(),
+            "events": [e.model_dump(mode="json") for e in events],
         }
 
-    @app.get("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
+    # POST: every export is recorded in the audit chain and stored under retention, so a
+    # prefetch, link preview or retry must never create one.
+    @app.post("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
     def audit_pack(case_id: str, c: Coord, who: Officer) -> Response:
         pack = c.export_audit_pack(case_id, who)
         headers = {"Content-Disposition": f'attachment; filename="audit-pack-{case_id}.zip"'}
@@ -214,6 +244,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(c.signing_public_key(), media_type="application/x-pem-file")
 
     return app
+
+
+class _IapKeys:
+    """IAP's public keys (PEM, by key id): cached for an hour, refetched early when a
+    token names a key id not yet seen (Google rotates keys), and never fetched while
+    holding the lock, so a slow or failing fetch cannot queue every request behind it.
+    """
+
+    TTL_S = 3600.0
+    RETRY_AFTER_FAILURE_S = 30.0
+
+    def __init__(self) -> None:
+        self._keys: dict[str, str] = {}
+        self._fetched_at = -math.inf
+        self._failed_at = -math.inf
+        self._lock = threading.Lock()
+
+    def get(self, key_id: str | None) -> dict[str, str]:
+        now = time.monotonic()
+        with self._lock:
+            fresh = now - self._fetched_at <= self.TTL_S
+            if fresh and (key_id is None or key_id in self._keys):
+                return self._keys
+            if now - self._failed_at < self.RETRY_AFTER_FAILURE_S:
+                raise ValueError("IAP keys unavailable; retrying shortly")
+        try:
+            keys = fetch_iap_keys()
+        except Exception as exc:
+            with self._lock:
+                self._failed_at = time.monotonic()
+            raise ValueError("IAP keys could not be fetched") from exc
+        with self._lock:
+            self._keys, self._fetched_at = keys, time.monotonic()
+            return self._keys
+
+
+def fetch_iap_keys() -> dict[str, str]:
+    with urllib.request.urlopen(IAP_KEYS_URL, timeout=10) as response:
+        keys = json.loads(response.read())
+    if not isinstance(keys, dict):
+        raise ValueError("unexpected IAP key format")
+    return {str(k): str(v) for k, v in keys.items()}
+
+
+_iap_keys = _IapKeys()
+IAP_CLOCK_SKEW_S = 30  # tolerate small clock differences between IAP and this host
+
+
+def verify_iap_jwt(token: str, audience: str) -> str:
+    """The signed-in email from an IAP assertion; ValueError if it is not genuine.
+
+    Any failure (bad signature, wrong audience or issuer, expiry, malformed token, keys
+    unreachable, verification library missing) is reported as ValueError, so callers
+    answer 401, never 500.
+    """
+    try:
+        import google.auth.jwt
+
+        header = google.auth.jwt.decode_header(token)  # type: ignore[no-untyped-call]
+        key_id = header.get("kid") if isinstance(header, dict) else None
+        claims = google.auth.jwt.decode(  # type: ignore[no-untyped-call]
+            token,
+            certs=_iap_keys.get(key_id),
+            audience=audience,
+            clock_skew_in_seconds=IAP_CLOCK_SKEW_S,
+        )
+    except ImportError as exc:
+        log.error("LL_API_IAP_AUDIENCE is set but google-auth is not installed (gcp extra)")
+        raise ValueError("IAP verification unavailable") from exc
+    except ValueError:
+        raise
+    except Exception as exc:  # the library raises several types; all mean "not genuine"
+        raise ValueError(f"IAP assertion rejected: {type(exc).__name__}") from exc
+    if claims.get("iss") != IAP_ISSUER or not claims.get("email"):
+        raise ValueError("not an Identity-Aware Proxy assertion")
+    return str(claims["email"])
 
 
 def _bearer_auth(settings: Settings) -> Callable[..., None]:

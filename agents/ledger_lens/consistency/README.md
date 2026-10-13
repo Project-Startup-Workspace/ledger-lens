@@ -9,8 +9,8 @@ Catches the main fraud risk, a notebook written the night before, by checking it
 | Model | None. Fully deterministic |
 
 Method:
-1. Choose one statement: the wallet or bank export covering the longest period. Summing several would double count transfers between accounts.
-2. Compare only weeks that both the notebook and the statement cover from Monday to Sunday. Skip weeks containing an unreadable notebook line rather than treating them as blank.
+1. Choose one statement: the wallet or bank export sharing the most confidently read weeks with the notebook. Summing several would double count transfers between accounts.
+2. Compare only weeks that both the notebook and the statement cover from Monday to Sunday. Skip weeks where either has an unreadable line rather than treating them as low.
 3. The applicant's usual wallet share is the median of weekly `wallet ÷ notebook` ratios.
 4. A week is flagged when `|ln(share ÷ usual share)|` exceeds `ln(1 + LL_CONSISTENCY_TOLERANCE)`, so 2× notebook inflation and 2× wallet excess are judged equally. Severity: above 2× the threshold is high, above 1.5× medium, otherwise low.
 5. Wallet money arriving in a week with no notebook sales is flagged, graded by its size against a typical week's inflow. Trivial amounts are ignored.

@@ -17,21 +17,44 @@ from ledger_lens.shared.pii import mask_text, mask_value
 _case_id: ContextVar[str | None] = ContextVar("case_id", default=None)
 _names: ContextVar[tuple[str, ...]] = ContextVar("names", default=())
 
+# Stamped onto each record when it is created (see below), never logged as fields.
+_CASE_ATTR, _NAMES_ATTR = "ll_case_id", "ll_names"
 # Attributes every LogRecord has; anything else was passed via `extra=` and is logged.
-_RESERVED = set(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
+_RESERVED = set(vars(logging.makeLogRecord({}))) | {
+    "message",
+    "asctime",
+    _CASE_ATTR,
+    _NAMES_ATTR,
+}
+_base_factory = logging.getLogRecordFactory()
+
+
+def _stamping_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+    """Capture the case context when a record is created, in the thread that logs it.
+
+    Formatting may happen later or elsewhere (queued handlers, test capture), when the
+    context is gone; reading it at format time would lose the case id and the masking.
+    """
+    record = _base_factory(*args, **kwargs)
+    setattr(record, _CASE_ATTR, _case_id.get())
+    setattr(record, _NAMES_ATTR, _names.get())
+    return record
+
+
+logging.setLogRecordFactory(_stamping_factory)
 
 
 class JsonFormatter(logging.Formatter):
     """Render records as one JSON object per line, masking personal data."""
 
     def format(self, record: logging.LogRecord) -> str:
-        names = _names.get()
+        names: tuple[str, ...] = getattr(record, _NAMES_ATTR, ())
         payload: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "severity": record.levelname,
             "logger": record.name,
             "message": mask_text(record.getMessage(), names),
-            "case_id": _case_id.get(),
+            "case_id": getattr(record, _CASE_ATTR, None),
         }
         for key, value in vars(record).items():
             if key not in _RESERVED:

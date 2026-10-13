@@ -69,3 +69,4 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | 2026-10-12 | Risk model trained on synthetic applicants and marked illustrative | No public dataset of notebook-evidenced loans |
 | 2026-10-12 | Audit packs signed with Ed25519 (KMS in the cloud) | A hash chain alone can be rebuilt by anyone |
 | 2026-10-12 | Live voice interview deferred | Playbook cut line; needs credentials to test |
+| 2026-10-13 | Full-codebase review before release: 29 findings fixed; Firestore and Storage tested against emulators in CI | Release gate for `main` |

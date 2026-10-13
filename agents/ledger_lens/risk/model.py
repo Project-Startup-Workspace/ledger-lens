@@ -44,7 +44,12 @@ class LogisticModel(BaseModel):
         return self.intercept + sum(c * v for c, v in zip(self.coefficients, z, strict=True))
 
     def probability(self, values: dict[str, float]) -> float:
-        return 1 / (1 + math.exp(-self.logit(values)))
+        """Logistic of the logit, computed so extreme inputs cannot overflow."""
+        logit = self.logit(values)
+        if logit >= 0:
+            return 1 / (1 + math.exp(-logit))
+        odds = math.exp(logit)
+        return odds / (1 + odds)
 
     def attributions(self, values: dict[str, float]) -> dict[str, float]:
         """Shapley value of each feature, relative to the average training applicant."""

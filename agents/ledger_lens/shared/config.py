@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # API access: browsers on these origins may call it; a bearer token is required if set.
     cors_origins: list[str] = ["http://localhost:3000"]
     api_token: SecretStr | None = None
+    # Set only when the API itself sits behind Identity-Aware Proxy: the audience of
+    # IAP's signed assertion (/projects/<number>/global/backendServices/<id>). Named
+    # apart from the web app's LL_IAP_AUDIENCE so a shared .env cannot switch it on.
+    api_iap_audience: str | None = None
 
     # Public address of the AuditPulse A2A service, written into its agent card
     a2a_public_url: str = "http://localhost:8081"

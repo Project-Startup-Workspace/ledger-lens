@@ -2,7 +2,12 @@
 
 import logging
 
-from ledger_lens.consistency.tools import WeeklySeries, compare, weekly_series
+from ledger_lens.consistency.tools import (
+    WeeklySeries,
+    comparable_weeks,
+    compare,
+    weekly_series,
+)
 from ledger_lens.shared.config import Settings
 from ledger_lens.shared.schemas import ConsistencyReport, EvidenceKind, ExtractionResult
 
@@ -21,7 +26,8 @@ class ConsistencyAgent:
         """Compare all notebook pages in the case with its best single statement.
 
         Only one statement is used: summing several would double count transfers between
-        accounts and duplicate uploads. The one covering the longest period wins.
+        accounts and duplicate uploads. The one sharing the most readable weeks with the
+        notebook wins.
         """
         min_conf = self._settings.min_extraction_confidence
         same_currency = [x for x in extractions if x.currency.upper() == currency.upper()]
@@ -41,9 +47,14 @@ class ConsistencyAgent:
         if not statements:
             report = compare(notebook, weekly_series([], min_conf), self._tolerance, currency)
         else:
-            statement_id, wallet = max(statements, key=lambda s: _span_days(s[1]))
+            statement_id, wallet = max(
+                statements, key=lambda s: _comparable_overlap(s[1], notebook)
+            )
             if len(statements) > 1:
-                notes.append("Several statements were uploaded; the longest one was compared.")
+                notes.append(
+                    "Several statements were uploaded; the one sharing the most readable "
+                    "weeks with the notebook was compared."
+                )
             report = compare(notebook, wallet, self._tolerance, currency, statement_id)
         report = report.model_copy(update={"notes": [*notes, *report.notes]})
         log.info("consistency checked", extra={"status": report.status, "flags": len(report.flags)})
@@ -54,7 +65,11 @@ class ConsistencyAgent:
         return self._settings.consistency_tolerance
 
 
-def _span_days(series: WeeklySeries) -> int:
-    if series.first_day is None or series.last_day is None:
-        return 0
-    return (series.last_day - series.first_day).days
+def _comparable_overlap(statement: WeeklySeries, notebook: WeeklySeries) -> int:
+    """Weeks this statement and the notebook can actually be compared on.
+
+    The same rule compare() applies (both fully cover the week, nothing unreadable), so
+    a long statement for another period, or one that cannot be read, ranks last.
+    """
+    weeks, _ = comparable_weeks(notebook, statement)
+    return len(weeks)

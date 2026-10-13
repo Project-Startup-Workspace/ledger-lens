@@ -56,7 +56,6 @@ class ExplainAgent:
         return Explanation(
             borrower_text=text,
             borrower_language=actual,
-            translated=actual == target,
             audio_available=self._can_speak and actual in prompts.TTS_LOCALES,
             written_by=written_by,
         )

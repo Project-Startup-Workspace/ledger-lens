@@ -55,9 +55,9 @@ export function ExplanationPanel({ caseId, initial }: { caseId: string; initial:
       }
     >
       <ErrorNote message={error} />
-      {!explanation.translated && (
+      {explanation.written_by === "template" && (
         <p className="mb-2 text-xs text-amber-700">
-          Shown in English: translation needs a Gemini connection.
+          Standard English summary: written explanations and translation need Gemini.
         </p>
       )}
       <p className="whitespace-pre-line text-sm leading-relaxed">

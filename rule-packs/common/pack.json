@@ -1,7 +1,7 @@
 {
   "jurisdiction": "common",
   "name": "All markets",
-  "version": "2026.10.2",
+  "version": "2026.10.3",
   "last_checked": "2026-10-12",
   "review_status": "draft",
   "sources": [
@@ -70,6 +70,25 @@
       "on_fail": "review",
       "pass_detail": "No names matched the sanctions lists.",
       "fail_detail": "A name is similar to a listed person. Verify identity documents before deciding.",
+      "cites": [
+        {
+          "source": "sanctions-lists",
+          "clause": "screening"
+        }
+      ]
+    },
+    {
+      "id": "ALL-SAN-02",
+      "title": "Every name could be screened",
+      "severity": "major",
+      "stage": "pre_decision",
+      "check": {
+        "fact": "screening.unscreenable",
+        "op": "empty"
+      },
+      "on_fail": "review",
+      "pass_detail": "All names are in a script the sanctions lists can be compared against.",
+      "fail_detail": "A name is written in a script the lists cannot be compared against. Screen its Latin transliteration manually before deciding.",
       "cites": [
         {
           "source": "sanctions-lists",

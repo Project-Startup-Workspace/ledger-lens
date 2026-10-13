@@ -1,6 +1,8 @@
 """Evidence agent: turns one uploaded document into structured ledger entries."""
 
 import logging
+import math
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -9,7 +11,7 @@ from ledger_lens.evidence.schemas import WireExtraction
 from ledger_lens.evidence.tools import box_from_gemini, parse_wallet_csv
 from ledger_lens.shared.config import Settings
 from ledger_lens.shared.llm import Attachment, LlmClient
-from ledger_lens.shared.safety import SafetyScreen
+from ledger_lens.shared.safety import HeuristicScreen, SafetyScreen
 from ledger_lens.shared.schemas import (
     Direction,
     EvidenceDocument,
@@ -19,10 +21,18 @@ from ledger_lens.shared.schemas import (
 
 log = logging.getLogger(__name__)
 
+# Larger than any amount a micro-enterprise notebook records, in any currency (IDR, VND).
+MAX_AMOUNT = 1e13
 CSV_TYPES = {"text/csv", "application/csv"}
 # Twelve months of history plus slack for a notebook started a few weeks earlier.
 MAX_HISTORY = timedelta(days=400)
 REMOVED = "[removed: suspected instructions]"
+_CURRENCY_CODE = re.compile(r"[A-Z]{3}")
+_SPLIT_SCREEN = HeuristicScreen()
+SPLIT_INJECTION_WARNING = (
+    "Text across several lines of the document looks like instructions to the system. "
+    "Nothing was removed; check the original document before relying on it."
+)
 INJECTION_WARNING = (
     "The document contains text that looks like instructions to the system. "
     "It was removed; check the original document."
@@ -40,7 +50,10 @@ class EvidenceAgent:
     def read(
         self, doc: EvidenceDocument, data: bytes, *, reference_date: date, currency: str
     ) -> ExtractionResult:
-        """Extract every money line from `data`, the bytes of `doc`."""
+        """Extract every money line from `data`, the bytes of `doc`.
+
+        `currency` is the case's ISO code, already normalised by the LoanRequest contract.
+        """
         if doc.content_type in CSV_TYPES or doc.filename.lower().endswith(".csv"):
             entries, warnings = parse_wallet_csv(data, doc.id)
             script, language, read_currency, other_text = "Latin", "und", currency, ""
@@ -57,18 +70,22 @@ class EvidenceAgent:
             entries, warnings = _to_entries(wire, doc.id)
             warnings = [*wire.warnings, *warnings]
             script, language, other_text = wire.script, wire.language, wire.other_text
-            read_currency = (wire.currency or currency).upper()
+            read_currency = wire.currency.strip().upper() or currency
             model = f"{self._settings.model_extract}/{prompts.PROMPT_VERSION}"
 
         entries, date_warnings = _within_window(entries, reference_date)
         entries, warnings, flagged = self._screen(entries, warnings, other_text)
-        if read_currency != currency.upper():
-            # Never add amounts in another currency into the case totals.
+        if read_currency != currency:
+            # Never add amounts in another currency into the case totals. The model's
+            # value is only quoted when it is a plain currency code: free text from the
+            # page must not reach the officer's warnings unscreened.
+            shown = read_currency if _CURRENCY_CODE.fullmatch(read_currency) else "another currency"
             warnings.append(
-                f"The document appears to be in {read_currency}, not {currency}. "
+                f"The document appears to be in {shown}, not {currency}. "
                 "Its amounts were sent to review instead of the totals."
             )
             entries = [e.model_copy(update={"confidence": 0.0}) for e in entries]
+            read_currency = shown if shown != "another currency" else "XXX"  # ISO "no currency"
         log.info(
             "evidence read",
             extra={"evidence_id": doc.id, "entries": len(entries), "flagged": flagged},
@@ -87,24 +104,36 @@ class EvidenceAgent:
     def _screen(
         self, entries: list[LedgerEntry], warnings: list[str], other_text: str
     ) -> tuple[list[LedgerEntry], list[str], bool]:
-        """Remove text that reads like instructions, wherever the model or file put it."""
-        flagged = self._safety.screen(other_text).flagged
+        """Remove text that reads like instructions, wherever the model or file put it.
+
+        Every line is screened on its own (a classifier can miss one instruction diluted
+        in a long page), and the joined page is screened too, which catches a phrase
+        split across lines.
+        """
+        removed = self._safety.screen(other_text).flagged
         clean_entries = []
         for entry in entries:
             if self._safety.screen(f"{entry.description}\n{entry.raw_text}").flagged:
-                flagged = True
+                removed = True
                 entry = entry.model_copy(update={"description": REMOVED, "raw_text": REMOVED})
             clean_entries.append(entry)
         clean_warnings = []
         for warning in warnings:
             if self._safety.screen(warning).flagged:
-                flagged = True
+                removed = True
             else:
                 clean_warnings.append(warning)
-        if flagged:
-            log.warning("possible prompt injection in evidence")
-            clean_warnings.append(INJECTION_WARNING)
-        return clean_entries, clean_warnings, flagged
+        page = "\n".join(
+            [other_text, *warnings, *(f"{e.description}\n{e.raw_text}" for e in entries)]
+        )
+        # The configured screen has already seen every line; the joined page only adds
+        # phrases split across lines, which the local patterns catch at no cost.
+        split_phrase = not removed and _SPLIT_SCREEN.screen(page).flagged
+        if not (removed or split_phrase):
+            return entries, warnings, False
+        log.warning("possible prompt injection in evidence", extra={"lines_removed": removed})
+        clean_warnings.append(INJECTION_WARNING if removed else SPLIT_INJECTION_WARNING)
+        return clean_entries, clean_warnings, True
 
 
 def _to_entries(wire: WireExtraction, evidence_id: str) -> tuple[list[LedgerEntry], list[str]]:
@@ -117,8 +146,11 @@ def _to_entries(wire: WireExtraction, evidence_id: str) -> tuple[list[LedgerEntr
         except ValueError:
             warnings.append(f"Skipped '{item.raw_text}': unreadable date.")
             continue
-        if item.amount < 0:
-            warnings.append(f"Skipped '{item.raw_text}': negative amount.")
+        if not math.isfinite(item.amount) or not 0 <= item.amount < MAX_AMOUNT:
+            warnings.append(f"Skipped '{item.raw_text}': amount is negative or not plausible.")
+            continue
+        if not math.isfinite(item.confidence):
+            warnings.append(f"Skipped '{item.raw_text}': no usable confidence.")
             continue
         entries.append(
             LedgerEntry(

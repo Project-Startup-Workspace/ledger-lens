@@ -10,13 +10,12 @@ from typing import Any
 
 from ledger_lens.risk.features import BY_NAME
 from ledger_lens.risk.model import LogisticModel
-from ledger_lens.shared.governance import bias_report_path
+from ledger_lens.shared.governance import bias_report_matches, bias_report_path
 
 
 def model_card(model: LogisticModel, artifact: Path) -> dict[str, Any]:
     """Inventory entry, training summary, features and fairness results for `artifact`."""
-    bias_path = bias_report_path(artifact)
-    bias = json.loads(bias_path.read_text()) if bias_path.exists() else None
+    bias = _bias_section(artifact)
     return {
         "inventory": {
             "name": "Ledger Lens default-risk model",
@@ -35,3 +34,21 @@ def model_card(model: LogisticModel, artifact: Path) -> dict[str, Any]:
         "explainability": "Exact Shapley values per feature, reported as reason codes.",
         "fairness": bias or {"status": "not yet run"},
     }
+
+
+def _bias_section(artifact: Path) -> dict[str, Any] | None:
+    """The bias report, marked with whether it was run on this exact artifact.
+
+    A report left over from an earlier training run must not pass as this model's;
+    whether it passed is stated in the report itself.
+    """
+    path = bias_report_path(artifact)
+    if not path.exists():
+        return None
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {"status": "bias report unreadable"}
+    if not isinstance(report, dict):
+        return {"status": "bias report unreadable"}
+    return report | {"valid_for_this_artifact": bias_report_matches(artifact)}

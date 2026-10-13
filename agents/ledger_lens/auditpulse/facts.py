@@ -7,6 +7,7 @@
 | consent.before_evidence | bool | Consent recorded no later than the first evidence upload |
 | applicant.age | int | Whole years at the case date |
 | screening.matches | list[str] | Sanctions-list names similar to the applicant or guarantor |
+| screening.unscreenable | list[str] | Names in a non-Latin script, which need manual screening |
 | disclosure.apr_pct, .instalment, .instalments | number | Key Fact Statement terms |
 | disclosure.blank_fields | list[str] | Unfilled agreement fields at signature |
 | disclosure.acknowledged | bool | Borrower acknowledged the Key Fact Statement |
@@ -21,7 +22,7 @@
 from datetime import date
 from typing import Any
 
-from ledger_lens.auditpulse.screening import ScreeningHit
+from ledger_lens.auditpulse.screening import ScreeningResult
 from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.governance import ModelRecord
 from ledger_lens.shared.schemas import CreditFile
@@ -35,7 +36,7 @@ def build_facts(
     case: CreditFile,
     jurisdiction: str,
     settings: Settings,
-    screening: list[ScreeningHit],
+    screening: ScreeningResult,
     model: ModelRecord | None,
 ) -> dict[str, Any]:
     disclosure = case.disclosure
@@ -49,7 +50,10 @@ def build_facts(
             ),
         },
         "applicant": {"age": age_on(case.applicant.date_of_birth, case.created_at.date())},
-        "screening": {"matches": sorted({hit.listed.name for hit in screening})},
+        "screening": {
+            "matches": sorted({hit.listed.name for hit in screening.hits}),
+            "unscreenable": screening.unscreenable,
+        },
         "disclosure": {
             "apr_pct": disclosure.apr_pct,
             "instalment": float(disclosure.instalment),

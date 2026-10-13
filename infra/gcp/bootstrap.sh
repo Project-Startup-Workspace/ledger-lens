@@ -92,11 +92,19 @@ step "Keyless GitHub deploys (Workload Identity Federation)"
 PROJECT_NUMBER="$(g projects describe "$PROJECT" --format='value(projectNumber)')"
 exists g iam workload-identity-pools describe github --location=global ||
   g iam workload-identity-pools create github --location=global --display-name="GitHub"
-exists g iam workload-identity-pools providers describe github --workload-identity-pool=github --location=global ||
+# Only this repository's main and dev branches may mint deploy credentials. The
+# condition is (re)applied on every run, so re-running tightens an existing provider.
+WIF_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
+WIF_CONDITION="assertion.repository=='${REPO}' && (assertion.ref=='refs/heads/main' || assertion.ref=='refs/heads/dev')"
+if exists g iam workload-identity-pools providers describe github --workload-identity-pool=github --location=global; then
+  g iam workload-identity-pools providers update-oidc github --location=global \
+    --workload-identity-pool=github --attribute-mapping="$WIF_MAPPING" \
+    --attribute-condition="$WIF_CONDITION"
+else
   g iam workload-identity-pools providers create-oidc github --location=global \
     --workload-identity-pool=github --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository=='${REPO}'"
+    --attribute-mapping="$WIF_MAPPING" --attribute-condition="$WIF_CONDITION"
+fi
 g iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${REPO}" >/dev/null
 

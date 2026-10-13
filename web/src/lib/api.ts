@@ -20,14 +20,18 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${BASE}${path}`, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const detail = typeof body.detail === "string" ? body.detail : response.statusText;
     throw new ApiError(response.status, detail);
   }
-  return response.json() as Promise<T>;
+  return response;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await send(path, init)).json() as Promise<T>;
 }
 
 const json = (body: unknown): RequestInit => ({
@@ -59,6 +63,9 @@ export const api = {
   decide: (id: string, outcome: Outcome, reason: string) =>
     request<CreditFile>(`/cases/${id}/decision`, json({ outcome, reason })),
   audit: (id: string) => request<AuditLog>(`/cases/${id}/audit`),
+  /** Records the export in the audit chain, so it is a POST and runs only on a click. */
+  exportAuditPack: async (id: string): Promise<Blob> =>
+    (await send(`/cases/${id}/audit-pack`, { method: "POST" })).blob(),
 };
 
 export const urls = {
@@ -66,6 +73,5 @@ export const urls = {
     `${BASE}/cases/${id}/evidence/${evidenceId}/file`,
   // The query only busts the browser cache when the language changes; the API ignores it.
   audio: (id: string, language: string) => `${BASE}/cases/${id}/explanation/audio?lang=${language}`,
-  auditPack: (id: string) => `${BASE}/cases/${id}/audit-pack`,
   report: (id: string) => `${BASE}/cases/${id}/report`,
 };
