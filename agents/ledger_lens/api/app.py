@@ -6,6 +6,7 @@ calls inside the agents are blocking SDK calls.
 
 import hmac
 import json
+import logging
 import math
 import threading
 import time
@@ -58,6 +59,7 @@ from ledger_lens.shared.schemas import (
 )
 from ledger_lens.shared.storage import ConcurrentUpdateError
 
+log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf", "text/csv"}
 # Types browsers report for .csv files (Windows says Excel; some pickers send nothing).
@@ -245,20 +247,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 class _IapKeys:
-    """IAP's public keys (PEM, by key id), fetched at most once an hour."""
+    """IAP's public keys (PEM, by key id): cached for an hour, refetched early when a
+    token names a key id not yet seen (Google rotates keys), and never fetched while
+    holding the lock, so a slow or failing fetch cannot queue every request behind it.
+    """
 
     TTL_S = 3600.0
+    RETRY_AFTER_FAILURE_S = 30.0
 
     def __init__(self) -> None:
         self._keys: dict[str, str] = {}
         self._fetched_at = -math.inf
+        self._failed_at = -math.inf
         self._lock = threading.Lock()
 
-    def get(self) -> dict[str, str]:
+    def get(self, key_id: str | None) -> dict[str, str]:
+        now = time.monotonic()
         with self._lock:
-            if time.monotonic() - self._fetched_at > self.TTL_S:
-                self._keys = fetch_iap_keys()
-                self._fetched_at = time.monotonic()
+            fresh = now - self._fetched_at <= self.TTL_S
+            if fresh and (key_id is None or key_id in self._keys):
+                return self._keys
+            if now - self._failed_at < self.RETRY_AFTER_FAILURE_S:
+                raise ValueError("IAP keys unavailable; retrying shortly")
+        try:
+            keys = fetch_iap_keys()
+        except Exception as exc:
+            with self._lock:
+                self._failed_at = time.monotonic()
+            raise ValueError("IAP keys could not be fetched") from exc
+        with self._lock:
+            self._keys, self._fetched_at = keys, time.monotonic()
             return self._keys
 
 
@@ -271,20 +289,32 @@ def fetch_iap_keys() -> dict[str, str]:
 
 
 _iap_keys = _IapKeys()
+IAP_CLOCK_SKEW_S = 30  # tolerate small clock differences between IAP and this host
 
 
 def verify_iap_jwt(token: str, audience: str) -> str:
     """The signed-in email from an IAP assertion; ValueError if it is not genuine.
 
     Any failure (bad signature, wrong audience or issuer, expiry, malformed token, keys
-    unreachable) is reported as ValueError, so callers answer 401, never 500.
+    unreachable, verification library missing) is reported as ValueError, so callers
+    answer 401, never 500.
     """
-    import google.auth.jwt
-
     try:
+        import google.auth.jwt
+
+        header = google.auth.jwt.decode_header(token)  # type: ignore[no-untyped-call]
+        key_id = header.get("kid") if isinstance(header, dict) else None
         claims = google.auth.jwt.decode(  # type: ignore[no-untyped-call]
-            token, certs=_iap_keys.get(), audience=audience
+            token,
+            certs=_iap_keys.get(key_id),
+            audience=audience,
+            clock_skew_in_seconds=IAP_CLOCK_SKEW_S,
         )
+    except ImportError as exc:
+        log.error("LL_API_IAP_AUDIENCE is set but google-auth is not installed (gcp extra)")
+        raise ValueError("IAP verification unavailable") from exc
+    except ValueError:
+        raise
     except Exception as exc:  # the library raises several types; all mean "not genuine"
         raise ValueError(f"IAP assertion rejected: {type(exc).__name__}") from exc
     if claims.get("iss") != IAP_ISSUER or not claims.get("email"):

@@ -11,7 +11,7 @@ from ledger_lens.evidence.schemas import WireExtraction
 from ledger_lens.evidence.tools import box_from_gemini, parse_wallet_csv
 from ledger_lens.shared.config import Settings
 from ledger_lens.shared.llm import Attachment, LlmClient
-from ledger_lens.shared.safety import SafetyScreen
+from ledger_lens.shared.safety import HeuristicScreen, SafetyScreen
 from ledger_lens.shared.schemas import (
     Direction,
     EvidenceDocument,
@@ -28,6 +28,7 @@ CSV_TYPES = {"text/csv", "application/csv"}
 MAX_HISTORY = timedelta(days=400)
 REMOVED = "[removed: suspected instructions]"
 _CURRENCY_CODE = re.compile(r"[A-Z]{3}")
+_SPLIT_SCREEN = HeuristicScreen()
 SPLIT_INJECTION_WARNING = (
     "Text across several lines of the document looks like instructions to the system. "
     "Nothing was removed; check the original document before relying on it."
@@ -125,7 +126,9 @@ class EvidenceAgent:
         page = "\n".join(
             [other_text, *warnings, *(f"{e.description}\n{e.raw_text}" for e in entries)]
         )
-        split_phrase = not removed and self._safety.screen(page).flagged
+        # The configured screen has already seen every line; the joined page only adds
+        # phrases split across lines, which the local patterns catch at no cost.
+        split_phrase = not removed and _SPLIT_SCREEN.screen(page).flagged
         if not (removed or split_phrase):
             return entries, warnings, False
         log.warning("possible prompt injection in evidence", extra={"lines_removed": removed})

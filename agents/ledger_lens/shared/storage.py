@@ -74,11 +74,13 @@ class LocalCaseRepository:
             stored = self.get(case.case_id)
             if stored is not None and stored.revision != case.revision:
                 raise ConcurrentUpdateError(case.case_id)
-            case.revision += 1
-            case.updated_at = utc_now()
+            stored = case.model_copy(
+                update={"revision": case.revision + 1, "updated_at": utc_now()}
+            )
             tmp = path.with_suffix(".tmp")
-            tmp.write_text(case.model_dump_json(indent=2), encoding="utf-8")
+            tmp.write_text(stored.model_dump_json(indent=2), encoding="utf-8")
             tmp.replace(path)  # atomic, so a crash never leaves half a case file
+            case.revision, case.updated_at = stored.revision, stored.updated_at
 
     def get(self, case_id: str) -> CreditFile | None:
         path = self._root / f"{check_key(case_id)}.json"
@@ -89,15 +91,19 @@ class LocalCaseRepository:
     def list(self, limit: int = 50) -> list[CreditFile]:
         """Most recently updated first.
 
-        Ordering reads only each file's timestamps (a plain JSON parse); full validation
-        is spent on the `limit` cases returned.
+        Every file is parsed once for its timestamps, keeping only (time, path); full
+        validation is spent on the `limit` cases returned.
         """
         stamped = []
         for path in self._root.glob("*.json"):
             raw = json.loads(path.read_text("utf-8"))
-            stamped.append((raw.get("updated_at") or raw["created_at"], raw))
-        stamped.sort(key=lambda item: datetime.fromisoformat(item[0]), reverse=True)
-        return [CreditFile.model_validate(raw) for _, raw in stamped[:limit]]
+            stamped.append(
+                (datetime.fromisoformat(raw.get("updated_at") or raw["created_at"]), path)
+            )
+        stamped.sort(reverse=True)
+        return [
+            CreditFile.model_validate_json(path.read_text("utf-8")) for _, path in stamped[:limit]
+        ]
 
 
 class GcsBlobStore:
@@ -125,27 +131,33 @@ class FirestoreCaseRepository:
         ref = self._collection.document(check_key(case.case_id))
         expected = case.revision
 
+        updated = utc_now()
+        stored = case.model_copy(update={"revision": expected + 1, "updated_at": updated})
+
         @self._firestore.transactional
         def write(transaction: Any) -> None:
             snapshot = ref.get(transaction=transaction)
             if snapshot.exists and snapshot.get("revision") != expected:
                 raise ConcurrentUpdateError(case.case_id)
-            data = case.model_dump(mode="json") | {"revision": expected + 1}
             # A native timestamp for ordering: the JSON string form does not sort
             # correctly when fractional seconds are omitted.
-            transaction.set(ref, data | {_ORDER_FIELD: case.updated_at})
+            transaction.set(ref, stored.model_dump(mode="json") | {_ORDER_FIELD: updated})
 
-        case.updated_at = utc_now()
         write(self._client.transaction())
-        case.revision = expected + 1
+        # Only a committed save changes the caller's case.
+        case.revision, case.updated_at = stored.revision, updated
 
     def get(self, case_id: str) -> CreditFile | None:
         snapshot = self._collection.document(check_key(case_id)).get()
         return _from_document(snapshot.to_dict()) if snapshot.exists else None
 
     def list(self, limit: int = 50) -> list[CreditFile]:
-        """Most recently updated first. Every document carries the order field, because
-        this repository has written it since the first release that used Firestore."""
+        """Most recently updated first.
+
+        Every document carries the order field: no Firestore deployment predates it (the
+        cloud phase starts with this release). A future change of order field needs a
+        backfill, because Firestore omits documents lacking the field from the query.
+        """
         query = self._collection.order_by(_ORDER_FIELD, direction="DESCENDING").limit(limit)
         return [_from_document(doc.to_dict()) for doc in query.stream()]
 

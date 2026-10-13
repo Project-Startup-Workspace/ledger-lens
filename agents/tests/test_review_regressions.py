@@ -732,3 +732,63 @@ def test_firestore_store_does_not_retry_errors_other_than_contention(
     with pytest.raises(ValueError, match="bad payload"):
         store.append("case_1", "x", "system", {})
     assert calls["n"] == 1
+
+
+# --- Final review -------------------------------------------------------------------
+
+
+def test_cases_stored_with_the_retired_translated_field_still_load(
+    coordinator: Coordinator, settings: Settings
+) -> None:
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "o")
+    coordinator.assess(case.case_id)
+    path = settings.data_dir / "cases" / f"{case.case_id}.json"
+    stored = json.loads(path.read_text())
+    stored["explanation"]["translated"] = False  # written by an earlier release
+    path.write_text(json.dumps(stored))
+    assert coordinator.get(case.case_id).explanation is not None
+    assert case.case_id in {c.case_id for c in coordinator.list_cases()}
+
+
+def test_iap_keys_refresh_for_an_unknown_key_id_and_back_off_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ledger_lens.api import app as api_module
+
+    fetches = {"n": 0}
+    batches = [{"old": "pem"}, {"old": "pem", "new": "pem2"}]
+
+    def fetch() -> dict[str, str]:
+        fetches["n"] += 1
+        return batches[min(fetches["n"] - 1, 1)]
+
+    monkeypatch.setattr(api_module, "fetch_iap_keys", fetch)
+    keys = api_module._IapKeys()
+    assert "old" in keys.get("old") and fetches["n"] == 1
+    assert "new" in keys.get("new") and fetches["n"] == 2  # rotation triggers a refetch
+    keys.get("new")
+    assert fetches["n"] == 2  # cached
+
+    failing = api_module._IapKeys()
+    monkeypatch.setattr(api_module, "fetch_iap_keys", lambda: (_ for _ in ()).throw(OSError()))
+    for _ in range(3):
+        with pytest.raises(ValueError):
+            failing.get("k")
+    monkeypatch.setattr(api_module, "fetch_iap_keys", fetch)
+    with pytest.raises(ValueError, match="retrying shortly"):
+        failing.get("k")  # failure cached; no stampede of fetches
+
+
+def test_a_lost_save_race_leaves_the_case_unchanged(settings: Settings) -> None:
+    from ledger_lens.shared.storage import ConcurrentUpdateError, LocalCaseRepository
+
+    repository = LocalCaseRepository(settings.data_dir / "cases")
+    coordinator = Coordinator(build_services(settings))
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "o")
+    first, second = repository.get(case.case_id), repository.get(case.case_id)
+    assert first and second
+    repository.save(first)
+    before = (second.revision, second.updated_at)
+    with pytest.raises(ConcurrentUpdateError):
+        repository.save(second)
+    assert (second.revision, second.updated_at) == before

@@ -324,6 +324,14 @@ class OfficerDecision(Contract):
 class Explanation(Contract):
     """The borrower's explanation. The officer report is built on demand from the case."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_fields(cls, data: Any) -> Any:
+        """Cases stored before `translated` was retired still load; `written_by` says it."""
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k != "translated"}
+        return data
+
     borrower_text: str
     borrower_language: str
     audio_available: bool = False

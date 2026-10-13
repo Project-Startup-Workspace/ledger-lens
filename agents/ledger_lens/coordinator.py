@@ -8,7 +8,7 @@ import contextvars
 import threading
 import weakref
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -278,11 +278,11 @@ class Coordinator:
         # upload order, so a retry pays only for the pages that failed.
         with ThreadPoolExecutor(max_workers=READ_WORKERS) as pool:
             futures = [pool.submit(contextvars.copy_context().run, read, d) for d in pending]
-            for future in futures:
-                if future.exception() is not None:
-                    for later in futures:
-                        later.cancel()
-                    break
+            # Wake on the first failure, whichever page it is, and cancel what has not started.
+            wait(futures, return_when=FIRST_EXCEPTION)
+            if any(f.done() and f.exception() is not None for f in futures):
+                for future in futures:
+                    future.cancel()
         first_error: BaseException | None = None
         for doc, future in zip(pending, futures, strict=True):
             if future.cancelled():
