@@ -59,6 +59,12 @@ export const api = {
   decide: (id: string, outcome: Outcome, reason: string) =>
     request<CreditFile>(`/cases/${id}/decision`, json({ outcome, reason })),
   audit: (id: string) => request<AuditLog>(`/cases/${id}/audit`),
+  /** Records the export in the audit chain, so it is a POST and runs only on a click. */
+  exportAuditPack: async (id: string): Promise<Blob> => {
+    const response = await fetch(`${BASE}/cases/${id}/audit-pack`, { method: "POST" });
+    if (!response.ok) throw new ApiError(response.status, "audit pack export failed");
+    return response.blob();
+  },
 };
 
 export const urls = {
@@ -66,6 +72,6 @@ export const urls = {
     `${BASE}/cases/${id}/evidence/${evidenceId}/file`,
   // The query only busts the browser cache when the language changes; the API ignores it.
   audio: (id: string, language: string) => `${BASE}/cases/${id}/explanation/audio?lang=${language}`,
-  auditPack: (id: string) => `${BASE}/cases/${id}/audit-pack`,
+
   report: (id: string) => `${BASE}/cases/${id}/report`,
 };

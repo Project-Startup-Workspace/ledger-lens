@@ -1,7 +1,9 @@
 """Name screening against sanctions lists.
 
 Matching is deliberately generous (names are transliterated many ways across JAPAC
-scripts), so a hit means "a person should check", never "reject".
+scripts), so a hit means "a person should check", never "reject". Lists are in Latin
+script; a name written in another script (Sinhala, Tamil, Devanagari, Thai) cannot be
+compared without transliteration, so it is reported as unscreenable, never as clear.
 """
 
 import json
@@ -27,10 +29,25 @@ class ScreeningHit(BaseModel):
     similarity: float
 
 
+class ScreeningResult(BaseModel):
+    hits: list[ScreeningHit]
+    unscreenable: list[str]  # names in a script the lists cannot be compared against
+
+
+# Latin letters that do not decompose into a base letter plus an accent.
+_FOLD = str.maketrans({"đ": "d", "ð": "d", "ł": "l", "ø": "o", "ß": "ss", "æ": "ae", "œ": "oe"})
+
+
+def is_latin(name: str) -> bool:
+    """True when every letter in `name` is a Latin letter (accents allowed)."""
+    return all(unicodedata.name(ch, "").startswith("LATIN") for ch in name if ch.isalpha())
+
+
 def normalise(name: str) -> str:
-    """Lowercase, strip accents and punctuation, and sort tokens so word order is ignored."""
-    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    tokens = "".join(ch if ch.isalnum() else " " for ch in ascii_name.lower()).split()
+    """Lowercase, fold accents and punctuation, and sort tokens so word order is ignored."""
+    folded = unicodedata.normalize("NFKD", name.lower().translate(_FOLD))
+    plain = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    tokens = "".join(ch if ch.isalnum() else " " for ch in plain).split()
     return " ".join(sorted(tokens))
 
 
@@ -40,9 +57,13 @@ class SanctionsScreen:
         self._entries = [ListedName.model_validate(e) for e in data["entries"]]
         self._normalised = [(normalise(e.name), e) for e in self._entries]
 
-    def screen(self, names: list[str]) -> list[ScreeningHit]:
+    def screen(self, names: list[str]) -> ScreeningResult:
         hits = []
-        for name in filter(None, names):
+        unscreenable = []
+        for name in (n for n in names if n.strip()):
+            if not is_latin(name):
+                unscreenable.append(name)
+                continue
             target = normalise(name)
             for listed_norm, entry in self._normalised:
                 similarity = max(
@@ -54,7 +75,7 @@ class SanctionsScreen:
                         screened_name=name, listed=entry, similarity=round(similarity, 3)
                     )
                     hits.append(hit)
-        return hits
+        return ScreeningResult(hits=hits, unscreenable=unscreenable)
 
 
 def token_overlap(a: str, b: str) -> float:

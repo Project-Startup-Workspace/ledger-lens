@@ -21,7 +21,7 @@ class ConsistencyAgent:
         """Compare all notebook pages in the case with its best single statement.
 
         Only one statement is used: summing several would double count transfers between
-        accounts and duplicate uploads. The one covering the longest period wins.
+        accounts and duplicate uploads. The one with the most readable weeks wins.
         """
         min_conf = self._settings.min_extraction_confidence
         same_currency = [x for x in extractions if x.currency.upper() == currency.upper()]
@@ -41,9 +41,12 @@ class ConsistencyAgent:
         if not statements:
             report = compare(notebook, weekly_series([], min_conf), self._tolerance, currency)
         else:
-            statement_id, wallet = max(statements, key=lambda s: _span_days(s[1]))
+            statement_id, wallet = max(statements, key=lambda s: _readable_weeks(s[1]))
             if len(statements) > 1:
-                notes.append("Several statements were uploaded; the longest one was compared.")
+                notes.append(
+                    "Several statements were uploaded; the one with the most readable weeks "
+                    "was compared."
+                )
             report = compare(notebook, wallet, self._tolerance, currency, statement_id)
         report = report.model_copy(update={"notes": [*notes, *report.notes]})
         log.info("consistency checked", extra={"status": report.status, "flags": len(report.flags)})
@@ -54,7 +57,6 @@ class ConsistencyAgent:
         return self._settings.consistency_tolerance
 
 
-def _span_days(series: WeeklySeries) -> int:
-    if series.first_day is None or series.last_day is None:
-        return 0
-    return (series.last_day - series.first_day).days
+def _readable_weeks(series: WeeklySeries) -> int:
+    """Weeks with confidently read inflows: a long but unreadable statement verifies nothing."""
+    return len(set(series.totals) - series.unreadable_weeks)

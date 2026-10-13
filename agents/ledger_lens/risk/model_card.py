@@ -10,13 +10,16 @@ from typing import Any
 
 from ledger_lens.risk.features import BY_NAME
 from ledger_lens.risk.model import LogisticModel
-from ledger_lens.shared.governance import bias_report_path
+from ledger_lens.shared.governance import bias_report_path, has_passing_bias_report
 
 
 def model_card(model: LogisticModel, artifact: Path) -> dict[str, Any]:
     """Inventory entry, training summary, features and fairness results for `artifact`."""
     bias_path = bias_report_path(artifact)
-    bias = json.loads(bias_path.read_text()) if bias_path.exists() else None
+    bias: dict[str, Any] | None = json.loads(bias_path.read_text()) if bias_path.exists() else None
+    if bias is not None:
+        # A report left over from an earlier training run must not pass as this model's.
+        bias["valid_for_this_artifact"] = has_passing_bias_report(artifact)
     return {
         "inventory": {
             "name": "Ledger Lens default-risk model",

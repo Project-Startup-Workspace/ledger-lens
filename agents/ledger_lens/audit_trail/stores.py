@@ -1,5 +1,7 @@
 """Audit stores for deployment. The local JSONL store lives in chain.py."""
 
+import random
+import time
 from typing import Any
 
 from ledger_lens.audit_trail.chain import (
@@ -13,6 +15,9 @@ from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.pii import mask_value
 from ledger_lens.shared.schemas import utc_now
 
+TRANSACTION_ATTEMPTS = 20
+APPEND_ROUNDS = 5  # each round retries the whole transaction after a jittered pause
+
 
 class FirestoreAuditStore:
     """Events in `audit/{case_id}/events/{seq}`; the head is updated in one transaction.
@@ -22,7 +27,7 @@ class FirestoreAuditStore:
     """
 
     def __init__(self, project: str | None) -> None:
-        from google.cloud import firestore
+        import google.cloud.firestore as firestore
 
         self._firestore = firestore
         self._db = firestore.Client(project=project)
@@ -50,8 +55,17 @@ class FirestoreAuditStore:
             transaction.set(head_ref, {"seq": event.seq, "hash": event.hash})
             return event
 
-        result: AuditEvent = write(self._db.transaction())
-        return result
+        # Under contention Firestore aborts the losing transaction; retrying is safe because
+        # each attempt re-reads the head. Giving up would lose an audit event, so try hard.
+        for round_no in range(1, APPEND_ROUNDS + 1):
+            try:
+                result: AuditEvent = write(self._db.transaction(max_attempts=TRANSACTION_ATTEMPTS))
+                return result
+            except ValueError:  # raised by the SDK when every attempt was aborted
+                if round_no == APPEND_ROUNDS:
+                    raise
+                time.sleep(random.uniform(0.05, 0.2) * round_no)  # noqa: S311 - jitter only
+        raise AssertionError("unreachable")
 
     def events(self, case_id: str) -> list[AuditEvent]:
         docs = self._db.collection("audit").document(case_id).collection("events").stream()

@@ -95,8 +95,8 @@ exists g iam workload-identity-pools describe github --location=global ||
 exists g iam workload-identity-pools providers describe github --workload-identity-pool=github --location=global ||
   g iam workload-identity-pools providers create-oidc github --location=global \
     --workload-identity-pool=github --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository=='${REPO}'"
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
+    --attribute-condition="assertion.repository=='${REPO}' && (assertion.ref=='refs/heads/main' || assertion.ref=='refs/heads/dev')"
 g iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${REPO}" >/dev/null
 

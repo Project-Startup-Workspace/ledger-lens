@@ -5,10 +5,13 @@ Read straight from the artifact JSON, so no agent needs another agent's internal
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
+
+_SAFE_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
 class ModelRecord(BaseModel):
@@ -35,6 +38,16 @@ def has_passing_bias_report(artifact: Path) -> bool:
     ) == artifact_fingerprint(artifact)
 
 
+def artifact_for_version(active_artifact: Path, version: str) -> Path | None:
+    """The artifact file for `version`: the active one, or `<version>.json` beside it."""
+    if not _SAFE_VERSION.fullmatch(version):
+        return None
+    for path in (active_artifact, active_artifact.parent / f"{version}.json"):
+        if _read_json(path).get("version") == version:
+            return path
+    return None
+
+
 def model_record(active_artifact: Path, version: str | None) -> ModelRecord | None:
     """Governance record for the model version that scored a case.
 
@@ -43,17 +56,16 @@ def model_record(active_artifact: Path, version: str | None) -> ModelRecord | No
     """
     if not version:
         return None
-    for path in (active_artifact, active_artifact.parent / f"{version}.json"):
-        artifact = _read_json(path)
-        if artifact.get("version") == version:
-            metrics = artifact.get("metrics")
-            auc = metrics.get("holdout_auc") if isinstance(metrics, dict) else None
-            return ModelRecord(
-                version=version,
-                validation_auc=auc if _is_auc(auc) else None,
-                bias_report=has_passing_bias_report(path),
-            )
-    return ModelRecord(version=version, validation_auc=None, bias_report=False)
+    path = artifact_for_version(active_artifact, version)
+    if path is None:
+        return ModelRecord(version=version, validation_auc=None, bias_report=False)
+    metrics = _read_json(path).get("metrics")
+    auc = metrics.get("holdout_auc") if isinstance(metrics, dict) else None
+    return ModelRecord(
+        version=version,
+        validation_auc=auc if _is_auc(auc) else None,
+        bias_report=has_passing_bias_report(path),
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any]:

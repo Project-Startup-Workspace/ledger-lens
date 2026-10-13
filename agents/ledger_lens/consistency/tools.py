@@ -108,13 +108,17 @@ def compare(
 
 
 def _comparable_weeks(notebook: WeeklySeries, wallet: WeeklySeries) -> tuple[list[date], list[str]]:
-    """Weeks both sources fully cover, minus weeks with unreadable notebook lines."""
+    """Weeks both sources fully cover, minus weeks where either has an unreadable line.
+
+    An unread line understates that week's total, which would look like a mismatch.
+    """
     candidates = sorted(w for w in set(notebook.totals) | set(wallet.totals))
     covered = [w for w in candidates if notebook.covers(w) and wallet.covers(w)]
-    readable = [w for w in covered if w not in notebook.unreadable_weeks]
+    unreadable = notebook.unreadable_weeks | wallet.unreadable_weeks
+    readable = [w for w in covered if w not in unreadable]
     notes = []
     if skipped := len(covered) - len(readable):
-        notes.append(f"{skipped} week(s) skipped because a notebook line there could not be read.")
+        notes.append(f"{skipped} week(s) skipped because a line there could not be read.")
     return readable, notes
 
 

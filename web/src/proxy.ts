@@ -1,11 +1,13 @@
 /**
  * Sign-in for the web app. When LL_WEB_USERS is set ("name:password,name2:password2"),
  * every page and API call needs HTTP Basic credentials, and the signed-in name becomes
- * the officer recorded on actions. Behind Identity-Aware Proxy, leave it unset.
+ * the officer recorded on actions. Behind Identity-Aware Proxy, leave it unset and set
+ * LL_TRUST_IAP=true: IAP then signs officers in and its user header names the officer.
  */
 import { NextResponse, type NextRequest } from "next/server";
 
 export const OFFICER_HEADER = "x-ll-officer";
+const IAP_USER_HEADER = "x-goog-authenticated-user-email";
 
 /** "name:pass:word" -> ["name", "pass:word"]; passwords may contain colons. */
 function splitFirstColon(value: string): [string, string] {
@@ -49,6 +51,11 @@ export function proxy(request: NextRequest) {
       });
     }
     headers.set(OFFICER_HEADER, name);
+  } else if (process.env.LL_TRUST_IAP === "true") {
+    // Only trustworthy when IAP fronts this app: IAP sets this header and strips any
+    // value a client sends.
+    const iapUser = request.headers.get(IAP_USER_HEADER);
+    if (iapUser) headers.set(OFFICER_HEADER, iapUser.replace(/^accounts\.google\.com:/, ""));
   }
   return NextResponse.next({ request: { headers } });
 }

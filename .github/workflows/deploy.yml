@@ -19,9 +19,14 @@ concurrency:
 
 jobs:
   deploy:
+    # Only CI runs triggered by a push to main (never a pull request, even one whose
+    # source branch is named main), or a manual run started on main.
     if: >
       vars.WIF_PROVIDER != '' &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
     env:
       REGION: ${{ vars.GCP_REGION }}

@@ -77,5 +77,6 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+markers = ["integration: needs the Firestore and Storage emulators (make emulators)"]
 # ADK labels its A2A support experimental on every call; the notice adds nothing to test output.
 filterwarnings = ["ignore:\\[EXPERIMENTAL\\]:UserWarning"]

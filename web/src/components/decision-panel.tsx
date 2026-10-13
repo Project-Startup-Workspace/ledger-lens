@@ -22,6 +22,22 @@ export function DecisionPanel({
   const [outcome, setOutcome] = useState<Outcome>(credit.risk?.recommendation ?? "refer");
   const [reason, setReason] = useState("");
   const [audit, setAudit] = useState<AuditLog | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportPack() {
+    setExporting(true);
+    try {
+      const blob = await api.exportAuditPack(id);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `audit-pack-${id}.zip`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setAudit(await api.audit(id)); // the export itself is now in the chain
+    } finally {
+      setExporting(false);
+    }
+  }
   const disclosure = credit.disclosure;
   const decision = credit.decision;
   const overriding = credit.risk && outcome !== credit.risk.recommendation;
@@ -138,12 +154,14 @@ export function DecisionPanel({
           ))}
         </ol>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a
-            href={urls.auditPack(id)}
-            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={exportPack}
+            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            Export audit pack
-          </a>
+            {exporting ? "Exporting…" : "Export audit pack"}
+          </button>
           <a
             href={urls.report(id)}
             target="_blank"

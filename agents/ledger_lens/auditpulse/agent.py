@@ -56,13 +56,13 @@ class AuditPulse:
         if not _CODE.fullmatch(code):
             raise InvalidJurisdictionError(f"'{jurisdiction}' is not a two-letter country code")
         pack = self._packs.get(code)
-        hits = self._sanctions.screen(
+        screening = self._sanctions.screen(
             [case.applicant.full_name, case.applicant.guarantor_name or ""]
         )
         record = model_record(
             self._settings.risk_model_path, case.risk.model_version if case.risk else None
         )
-        facts = build_facts(case, code, self._settings, hits, record)
+        facts = build_facts(case, code, self._settings, screening, record)
         packs = [p for p in (self._packs.common, pack) if p is not None]
         outcome = case.decision.outcome if case.decision else None
         findings = [self._finding(p, rule, facts, outcome) for p in packs for rule in p.rules]

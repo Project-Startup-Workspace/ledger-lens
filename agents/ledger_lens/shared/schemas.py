@@ -10,6 +10,8 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from pydantic import (
+    AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -19,6 +21,18 @@ from pydantic import (
 )
 
 # Money is exact in memory and a plain number in JSON, so charts need no parsing.
+# Timestamps must carry a zone: naive values from external callers cannot be compared
+# with the system's UTC times, and ordering checks (consent before evidence) need both.
+Timestamp = AwareDatetime
+# ISO 4217 codes, normalised to upper case once here so no consumer has to.
+CurrencyCode = Annotated[
+    str, AfterValidator(str.upper), Field(pattern=r"^[A-Za-z]{3}$", examples=["LKR", "IDR"])
+]
+# Shared by the case store and the audit store so both accept exactly the same ids.
+CASE_ID_PATTERN = r"[A-Za-z0-9_-]{1,64}"
+# Model versions name files on disk, so they are restricted to safe characters.
+ModelVersion = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]
+
 Money = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
 JurisdictionCode = Annotated[str, Field(pattern=r"^[a-z]{2}$", examples=["lk", "sg", "in"])]
 
@@ -72,7 +86,7 @@ class EvidenceDocument(Contract):
     content_type: str
     sha256: str
     blob_key: str
-    uploaded_at: datetime = Field(default_factory=utc_now)
+    uploaded_at: Timestamp = Field(default_factory=utc_now)
 
 
 class LedgerEntry(Contract):
@@ -116,7 +130,7 @@ class WeekTotal(Contract):
 class CashFlowSummary(Contract):
     """Deterministic totals calculated from ledger entries; never produced by a model."""
 
-    currency: str
+    currency: CurrencyCode
     weeks: list[WeekTotal]
     total_sales: Money
     total_expenses: Money
@@ -188,7 +202,7 @@ class CounterfactualStep(Contract):
 
 
 class RiskResult(Contract):
-    model_version: str
+    model_version: ModelVersion
     probability_of_default: float = Field(ge=0, le=1)
     grade: RiskGrade
     recommendation: Literal["approve", "refer", "decline"]
@@ -231,7 +245,7 @@ class ComplianceReport(Contract):
     jurisdiction_name: str
     rule_pack_version: str
     findings: list[Finding]
-    generated_at: datetime = Field(default_factory=utc_now)
+    generated_at: Timestamp = Field(default_factory=utc_now)
 
     def count(self, status: FindingStatus) -> int:
         """Number of findings with the given status."""
@@ -248,14 +262,14 @@ class Applicant(Contract):
     phone: str
     business_name: str
     business_type: str
-    years_in_business: float = Field(ge=0)
+    years_in_business: float = Field(ge=0, le=100)
     preferred_language: str = "en"
     guarantor_name: str | None = None
 
 
 class LoanRequest(Contract):
     amount: Money = Field(gt=0)
-    currency: str
+    currency: CurrencyCode
     tenor_months: int = Field(gt=0, le=120)
     annual_rate_pct: float = Field(ge=0, le=100)
     purpose: str
@@ -263,7 +277,7 @@ class LoanRequest(Contract):
 
 class Consent(Contract):
     given: bool
-    recorded_at: datetime = Field(default_factory=utc_now)
+    recorded_at: Timestamp = Field(default_factory=utc_now)
     method: Literal["signature", "verbal_recorded", "digital"] = "digital"
     text_version: str = "consent-v1"
 
@@ -275,8 +289,8 @@ class Disclosure(Contract):
     total_repayable: Money
     instalment: Money
     instalments: int
-    issued_at: datetime = Field(default_factory=utc_now)
-    acknowledged_at: datetime | None = None
+    issued_at: Timestamp = Field(default_factory=utc_now)
+    acknowledged_at: Timestamp | None = None
     blank_fields: list[str] = []  # any unfilled field in the agreement presented for signature
 
 
@@ -285,7 +299,7 @@ class OfficerDecision(Contract):
     outcome: Literal["approve", "decline", "refer"]
     recommended: Literal["approve", "refer", "decline"]
     reason: str
-    decided_at: datetime = Field(default_factory=utc_now)
+    decided_at: Timestamp = Field(default_factory=utc_now)
 
     @model_validator(mode="before")
     @classmethod
@@ -318,7 +332,7 @@ class CaseStatus(StrEnum):
     DECIDED = "decided"
 
 
-CaseId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+CaseId = Annotated[str, Field(pattern=f"^{CASE_ID_PATTERN}$")]
 
 
 class CreditFile(Contract):
@@ -327,7 +341,8 @@ class CreditFile(Contract):
     case_id: CaseId = Field(default_factory=lambda: new_id("case"))
     revision: int = Field(default=0, ge=0)  # bumped on every save; guards concurrent writers
     status: CaseStatus = CaseStatus.DRAFT
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: Timestamp = Field(default_factory=utc_now)
+    updated_at: Timestamp = Field(default_factory=utc_now)  # set by the repository on save
     jurisdiction: JurisdictionCode
     applicant: Applicant
     loan: LoanRequest

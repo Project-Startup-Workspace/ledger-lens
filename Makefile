@@ -4,7 +4,7 @@ UV ?= uv
 AGENTS := agents
 WEB := web
 
-.PHONY: help setup check lint typecheck test api a2a web up demo-data train eval clean
+.PHONY: help setup check lint typecheck test test-integration emulators api a2a web up demo-data train eval clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -26,6 +26,15 @@ typecheck: ## Type-check Python and web code
 
 test: ## Run the Python test suite
 	cd $(AGENTS) && $(UV) run pytest
+
+EMULATOR_ENV := FIRESTORE_EMULATOR_HOST=localhost:8681 STORAGE_EMULATOR_HOST=http://localhost:4443 GOOGLE_CLOUD_PROJECT=ledger-lens-test
+
+emulators: ## Start the Firestore and Cloud Storage emulators in Docker
+	docker run -d --rm --name ll-firestore -p 8681:8681 gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators gcloud emulators firestore start --host-port=0.0.0.0:8681
+	docker run -d --rm --name ll-storage -p 4443:4443 fsouza/fake-gcs-server -scheme http -port 4443 -public-host localhost:4443
+
+test-integration: ## Run the cloud adapter tests against the emulators (make emulators first)
+	cd $(AGENTS) && $(EMULATOR_ENV) $(UV) run pytest -m integration
 
 api: ## Run the API on :8080 (offline models unless .env says otherwise)
 	cd $(AGENTS) && $(UV) run uvicorn ledger_lens.api.app:app --reload --port 8080

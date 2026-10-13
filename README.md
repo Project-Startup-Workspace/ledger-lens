@@ -43,6 +43,6 @@ Or run everything in containers: `docker compose up --build`.
 
 ## Development
 
-`main` holds released states; work happens on feature branches from `dev`, merged by pull request. Run `make check` before pushing; CI runs the same checks plus image builds and a secret scan.
+`main` holds released states; work happens on feature branches from `dev`, merged by pull request. Run `make check` before pushing. `make emulators && make test-integration` tests the Firestore and Cloud Storage adapters against their emulators in Docker. CI runs all of these, plus image builds and a secret scan.
 
 Status: competition build. The risk model is illustrative (synthetic training data), and rule packs are drafts pending legal review.

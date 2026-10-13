@@ -1,6 +1,7 @@
 """Evidence agent: turns one uploaded document into structured ledger entries."""
 
 import logging
+import math
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -19,6 +20,8 @@ from ledger_lens.shared.schemas import (
 
 log = logging.getLogger(__name__)
 
+# Larger than any amount a micro-enterprise notebook records, in any currency (IDR, VND).
+MAX_AMOUNT = 1e13
 CSV_TYPES = {"text/csv", "application/csv"}
 # Twelve months of history plus slack for a notebook started a few weeks earlier.
 MAX_HISTORY = timedelta(days=400)
@@ -43,7 +46,7 @@ class EvidenceAgent:
         """Extract every money line from `data`, the bytes of `doc`."""
         if doc.content_type in CSV_TYPES or doc.filename.lower().endswith(".csv"):
             entries, warnings = parse_wallet_csv(data, doc.id)
-            script, language, read_currency, other_text = "Latin", "und", currency, ""
+            script, language, read_currency, other_text = "Latin", "und", currency.upper(), ""
             model = "csv-parser"
         else:
             wire = self._llm.generate(
@@ -87,24 +90,34 @@ class EvidenceAgent:
     def _screen(
         self, entries: list[LedgerEntry], warnings: list[str], other_text: str
     ) -> tuple[list[LedgerEntry], list[str], bool]:
-        """Remove text that reads like instructions, wherever the model or file put it."""
-        flagged = self._safety.screen(other_text).flagged
+        """Remove text that reads like instructions, wherever the model or file put it.
+
+        The whole page is screened in one call; only a flagged page is screened line by
+        line to find what to remove, so a clean page costs a single safety check.
+        """
+        page = "\n".join(
+            [other_text, *warnings, *(f"{e.description}\n{e.raw_text}" for e in entries)]
+        )
+        if not self._safety.screen(page).flagged:
+            return entries, warnings, False
+        removed = self._safety.screen(other_text).flagged
         clean_entries = []
         for entry in entries:
             if self._safety.screen(f"{entry.description}\n{entry.raw_text}").flagged:
-                flagged = True
+                removed = True
                 entry = entry.model_copy(update={"description": REMOVED, "raw_text": REMOVED})
             clean_entries.append(entry)
         clean_warnings = []
         for warning in warnings:
             if self._safety.screen(warning).flagged:
-                flagged = True
+                removed = True
             else:
                 clean_warnings.append(warning)
-        if flagged:
-            log.warning("possible prompt injection in evidence")
-            clean_warnings.append(INJECTION_WARNING)
-        return clean_entries, clean_warnings, flagged
+        # The page matched as a whole even if no single line did (a phrase split across
+        # lines), so the officer is always warned.
+        log.warning("possible prompt injection in evidence", extra={"lines_removed": removed})
+        clean_warnings.append(INJECTION_WARNING)
+        return clean_entries, clean_warnings, True
 
 
 def _to_entries(wire: WireExtraction, evidence_id: str) -> tuple[list[LedgerEntry], list[str]]:
@@ -117,8 +130,11 @@ def _to_entries(wire: WireExtraction, evidence_id: str) -> tuple[list[LedgerEntr
         except ValueError:
             warnings.append(f"Skipped '{item.raw_text}': unreadable date.")
             continue
-        if item.amount < 0:
-            warnings.append(f"Skipped '{item.raw_text}': negative amount.")
+        if not math.isfinite(item.amount) or not 0 <= item.amount < MAX_AMOUNT:
+            warnings.append(f"Skipped '{item.raw_text}': amount is negative or not plausible.")
+            continue
+        if not math.isfinite(item.confidence):
+            warnings.append(f"Skipped '{item.raw_text}': no usable confidence.")
             continue
         entries.append(
             LedgerEntry(

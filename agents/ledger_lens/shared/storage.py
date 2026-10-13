@@ -4,10 +4,10 @@
 import fcntl
 import re
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from ledger_lens.shared.config import Backend, Settings
-from ledger_lens.shared.schemas import CreditFile
+from ledger_lens.shared.schemas import CreditFile, utc_now
 
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
 
@@ -33,7 +33,9 @@ class CaseRepository(Protocol):
 
     def get(self, case_id: str) -> CreditFile | None: ...
 
-    def list(self, limit: int = 50) -> list[CreditFile]: ...
+    def list(self, limit: int = 50) -> list[CreditFile]:
+        """Cases ordered by most recent update."""
+        ...
 
 
 def check_key(key: str) -> str:
@@ -71,6 +73,7 @@ class LocalCaseRepository:
             if stored is not None and stored.revision != case.revision:
                 raise ConcurrentUpdateError(case.case_id)
             case.revision += 1
+            case.updated_at = utc_now()
             tmp = path.with_suffix(".tmp")
             tmp.write_text(case.model_dump_json(indent=2), encoding="utf-8")
             tmp.replace(path)  # atomic, so a crash never leaves half a case file
@@ -82,11 +85,11 @@ class LocalCaseRepository:
         return CreditFile.model_validate_json(path.read_text(encoding="utf-8"))
 
     def list(self, limit: int = 50) -> list[CreditFile]:
-        cases = [
-            CreditFile.model_validate_json(p.read_text(encoding="utf-8"))
-            for p in self._root.glob("*.json")
-        ]
-        return sorted(cases, key=lambda c: c.created_at, reverse=True)[:limit]
+        """Most recently updated first. Every save rewrites the file, so its modification
+        time is the update time and only the newest `limit` files need parsing."""
+        paths = sorted(self._root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        cases = [CreditFile.model_validate_json(p.read_text("utf-8")) for p in paths[:limit]]
+        return sorted(cases, key=lambda c: c.updated_at, reverse=True)
 
 
 class GcsBlobStore:
@@ -106,17 +109,31 @@ class FirestoreCaseRepository:
     def __init__(self, project: str | None, collection: str = "cases") -> None:
         import google.cloud.firestore as firestore
 
-        self._collection = firestore.Client(project=project).collection(collection)
+        self._firestore = firestore
+        self._client = firestore.Client(project=project)
+        self._collection = self._client.collection(collection)
 
     def save(self, case: CreditFile) -> None:
-        self._collection.document(case.case_id).set(case.model_dump(mode="json"))
+        ref = self._collection.document(check_key(case.case_id))
+        expected = case.revision
+
+        @self._firestore.transactional
+        def write(transaction: Any) -> None:
+            snapshot = ref.get(transaction=transaction)
+            if snapshot.exists and snapshot.get("revision") != expected:
+                raise ConcurrentUpdateError(case.case_id)
+            transaction.set(ref, case.model_dump(mode="json") | {"revision": expected + 1})
+
+        case.updated_at = utc_now()
+        write(self._client.transaction())
+        case.revision = expected + 1
 
     def get(self, case_id: str) -> CreditFile | None:
         snapshot = self._collection.document(check_key(case_id)).get()
         return CreditFile.model_validate(snapshot.to_dict()) if snapshot.exists else None
 
     def list(self, limit: int = 50) -> list[CreditFile]:
-        query = self._collection.order_by("created_at", direction="DESCENDING").limit(limit)
+        query = self._collection.order_by("updated_at", direction="DESCENDING").limit(limit)
         return [CreditFile.model_validate(doc.to_dict()) for doc in query.stream()]
 
 

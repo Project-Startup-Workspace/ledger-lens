@@ -143,7 +143,7 @@ def test_prompt_carries_checked_facts_but_no_personal_identifiers(online: Settin
 
 def test_offline_falls_back_to_english_template_without_audio(settings: Settings) -> None:
     explanation = agent(build_llm(settings), settings).explain(assessed_case(), "en")
-    assert explanation.translated and explanation.borrower_language == "en"
+    assert not explanation.translated and explanation.borrower_language == "en"
     assert not explanation.audio_available and explanation.written_by == TEMPLATE
     assert "A loan officer makes the final decision." in explanation.borrower_text
 

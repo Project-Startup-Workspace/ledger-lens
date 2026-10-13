@@ -119,10 +119,10 @@ def test_demo_kandy_case_is_consistent(settings: Settings) -> None:
     assert report.status == "compared" and report.flags == []
 
 
-def test_only_the_longest_statement_is_used(settings: Settings) -> None:
+def test_only_the_most_readable_statement_is_used(settings: Settings) -> None:
     extractions = _read_case("synthetic-grocer-kandy", "LKR", settings)
     wallet = extractions[-1]
     short_copy = wallet.model_copy(update={"evidence_id": "dup", "entries": wallet.entries[:10]})
     report = ConsistencyAgent(settings).check([*extractions, short_copy], "LKR")
     assert report.statement_evidence_id == wallet.evidence_id
-    assert report.flags == [] and any("longest" in n for n in report.notes)
+    assert report.flags == [] and any("most readable" in n for n in report.notes)

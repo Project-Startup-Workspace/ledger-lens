@@ -7,11 +7,19 @@ exactly the same logic. Every state change is saved and appended to the audit ch
 import threading
 import weakref
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Literal
 
-from ledger_lens.audit_trail.chain import AuditEvent, AuditStore, sha256_hex, verify_chain
+from ledger_lens.audit_trail.chain import (
+    AuditEvent,
+    AuditStore,
+    ChainVerification,
+    sha256_hex,
+    verify_chain,
+)
 from ledger_lens.audit_trail.pack import build_pack, snapshot_hash
 from ledger_lens.audit_trail.signing import Signer, build_signer
 from ledger_lens.audit_trail.stores import build_audit_store
@@ -28,6 +36,7 @@ from ledger_lens.risk.agent import RiskAgent
 from ledger_lens.risk.model import LogisticModel
 from ledger_lens.risk.model_card import model_card
 from ledger_lens.shared.config import Settings
+from ledger_lens.shared.governance import artifact_for_version
 from ledger_lens.shared.llm import build_llm
 from ledger_lens.shared.logs import case_context
 from ledger_lens.shared.pii import pseudonym
@@ -38,9 +47,11 @@ from ledger_lens.shared.schemas import (
     ComplianceReport,
     Consent,
     CreditFile,
+    Disclosure,
     EvidenceDocument,
     EvidenceKind,
     Explanation,
+    ExtractionResult,
     LoanRequest,
     OfficerDecision,
     utc_now,
@@ -53,6 +64,7 @@ from ledger_lens.shared.storage import (
 )
 
 SYSTEM = "system"
+READ_WORKERS = 4  # concurrent model calls per assessment
 
 
 class CaseNotFoundError(LookupError):
@@ -176,6 +188,9 @@ class Coordinator:
             if case.status is CaseStatus.DECIDED:
                 raise CaseStateError("the case is decided; open a new case for new evidence")
             digest = sha256_hex(data)
+            if any(d.sha256 == digest for d in case.evidence):
+                # The same page twice would count its sales twice.
+                raise CaseStateError(f"'{filename}' was already uploaded to this case")
             doc = EvidenceDocument(
                 kind=kind,
                 filename=filename,
@@ -240,13 +255,23 @@ class Coordinator:
         if not any(d.kind is EvidenceKind.NOTEBOOK for d in case.evidence):
             raise CaseStateError("upload at least one notebook page before assessing")
         done = {x.evidence_id for x in case.extractions}
-        for doc in (d for d in case.evidence if d.id not in done):
-            result = self._s.evidence.read(
+        pending = [d for d in case.evidence if d.id not in done]
+
+        def read(doc: EvidenceDocument) -> ExtractionResult:
+            # Entries can be dated up to the upload; a day of slack covers time zones.
+            reference = doc.uploaded_at.date() + timedelta(days=1)
+            return self._s.evidence.read(
                 doc,
                 self._s.blobs.get(doc.blob_key),
-                reference_date=case.created_at.date(),
+                reference_date=reference,
                 currency=case.loan.currency,
             )
+
+        # Pages are independent, so model calls run in parallel; results are recorded in
+        # upload order so the audit chain does not depend on which call finished first.
+        with ThreadPoolExecutor(max_workers=READ_WORKERS) as pool:
+            results = list(pool.map(read, pending))
+        for doc, result in zip(pending, results, strict=True):
             case.extractions.append(result)
             self._save(
                 case,
@@ -289,7 +314,10 @@ class Coordinator:
     def score_risk(self, case: CreditFile, actor: str = SYSTEM) -> None:
         """Agent 3, plus the Key Fact Statement that the offer would carry."""
         case.risk = self._s.risk.assess(case)
-        case.disclosure = key_fact_statement(case.loan)
+        offer = key_fact_statement(case.loan)
+        # Keep the borrower's acknowledgement when the terms they saw are unchanged.
+        if case.disclosure is None or _terms(case.disclosure) != _terms(offer):
+            case.disclosure = offer
         self._save(
             case,
             "risk_assessed",
@@ -388,13 +416,14 @@ class Coordinator:
             self._require_assessed(case)
             self._require_open(case)
             assert case.risk is not None
-            if not reason.strip():
+            reason = reason.strip()
+            if not reason:
                 raise CaseStateError("a reason is required for every decision")
             case.decision = OfficerDecision(
                 officer_id=officer_id,
                 outcome=outcome,
                 recommended=case.risk.recommendation,
-                reason=reason.strip(),
+                reason=reason,
             )
             case.status = CaseStatus.DECIDED
             self._save(
@@ -417,8 +446,10 @@ class Coordinator:
         self.get(case_id)
         return self._s.audit.events(case_id)
 
-    def verify_audit_chain(self, case_id: str) -> dict[str, Any]:
-        return verify_chain(self.audit_events(case_id)).model_dump()
+    def audit_log(self, case_id: str) -> tuple[list[AuditEvent], ChainVerification]:
+        """The events and their verification, from a single read."""
+        events = self.audit_events(case_id)
+        return events, verify_chain(events)
 
     def export_audit_pack(self, case_id: str, actor: str) -> bytes:
         """Record the export, then sign and store a pack that includes that record."""
@@ -434,7 +465,7 @@ class Coordinator:
                 case,
                 self._s.audit.events(case.case_id),
                 [case.compliance] if case.compliance else [],
-                model_card(self._s.model, self._s.settings.risk_model_path),
+                self._model_card_for(case),
                 officer_report(case),
                 self._s.signer,
             )
@@ -448,12 +479,20 @@ class Coordinator:
     def signing_public_key(self) -> bytes:
         return self._s.signer.public_key_pem()
 
+    def _model_card_for(self, case: CreditFile) -> dict[str, Any] | None:
+        """Card for the model version that scored this case, which may not be the active one."""
+        if case.risk is None:
+            return None
+        path = artifact_for_version(self._s.settings.risk_model_path, case.risk.model_version)
+        if path is None:
+            return {"version": case.risk.model_version, "status": "artifact no longer available"}
+        return model_card(LogisticModel.load(path), path)
+
     # --- Internals --------------------------------------------------------------------
 
     @contextmanager
     def _case(self, case_id: str) -> Iterator[CreditFile]:
         """Load a case under its lock, so concurrent requests cannot interleave."""
-        self.get(case_id)  # unknown ids fail before a lock is created for them
         with self._lock_for(case_id):
             case = self.get(case_id)
             with self._context(case):
@@ -490,3 +529,12 @@ class Coordinator:
     def _require_assessed(case: CreditFile) -> None:
         if case.status is CaseStatus.DRAFT or case.risk is None:
             raise CaseStateError("assess the case first")
+
+
+def _terms(disclosure: Disclosure) -> tuple[object, ...]:
+    return (
+        disclosure.apr_pct,
+        disclosure.instalment,
+        disclosure.instalments,
+        disclosure.total_repayable,
+    )

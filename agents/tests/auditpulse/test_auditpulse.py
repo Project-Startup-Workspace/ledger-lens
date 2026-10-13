@@ -117,8 +117,21 @@ def test_screening_tolerates_accents_order_and_spelling() -> None:
         "Tran Hung",
         "Hung Tran Van Minh",
     ]:
-        assert screen.screen([name]), name
-    assert not screen.screen(["Kamala Perera", "", "Hung"])
+        assert screen.screen([name]).hits, name
+    assert not screen.screen(["Kamala Perera", "", "Hung"]).hits
+
+
+def test_screening_folds_special_latin_letters_and_flags_other_scripts() -> None:
+    screen = SanctionsScreen(PACKS / "common" / "sanctions-sample.json")
+    assert normalise("Đặng Văn") == normalise("Dang Van")
+    result = screen.screen(["කමලා පෙරේරා", "Kamala Perera"])
+    assert result.unscreenable == ["කමලා පෙරේරා"] and result.hits == []
+
+
+def test_names_in_other_scripts_go_to_review(auditpulse: AuditPulse) -> None:
+    case = make_case()
+    case.applicant.full_name = "கமலா பெரேரா"
+    assert statuses(auditpulse.check(case))["ALL-SAN-01"] is FindingStatus.REVIEW
 
 
 def test_key_fact_statement_terms() -> None:
@@ -171,7 +184,7 @@ def statuses(report) -> dict[str, FindingStatus]:
 
 def test_sri_lanka_before_decision(auditpulse: AuditPulse) -> None:
     report = auditpulse.check(make_case())
-    assert report.rule_pack_version == "common@2026.10.2+lk@2026.10.2"
+    assert report.rule_pack_version == "common@2026.10.3+lk@2026.10.2"
     assert statuses(report) == {
         "ALL-CON-01": FindingStatus.PASS,
         "ALL-SAN-01": FindingStatus.PASS,

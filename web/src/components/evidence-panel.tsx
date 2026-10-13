@@ -24,8 +24,11 @@ export function EvidencePanel({
 }) {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
-  // Until the officer picks a document, show the most recent upload.
-  const doc = credit.evidence.find((d) => d.id === selectedDoc) ?? credit.evidence.at(-1);
+  // Until the officer picks a document, show the latest photo (boxes are what matter),
+  // falling back to the latest upload of any kind.
+  const latestImage = credit.evidence.findLast((d) => d.content_type.startsWith("image/"));
+  const doc =
+    credit.evidence.find((d) => d.id === selectedDoc) ?? latestImage ?? credit.evidence.at(-1);
   const extraction = credit.extractions.find((x) => x.evidence_id === doc?.id);
   // The server decides what needs review (its threshold is configurable), not the UI.
   const forReview = new Set(credit.cash_flow?.entries_for_review.map((e) => e.id));

@@ -9,7 +9,17 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -84,7 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Behind Identity-Aware Proxy, Google sets the signed-in user's email. The web
         app's server-side proxy, which holds the API token, may set X-Officer-Id.
         """
-        if iap := request.headers.get(IAP_USER_HEADER):
+        if settings.trust_iap_header and (iap := request.headers.get(IAP_USER_HEADER)):
             return iap.removeprefix("accounts.google.com:")
         if settings.api_token and (forwarded := request.headers.get(OFFICER_HEADER)):
             return forwarded[:64]
@@ -123,8 +133,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/cases", tags=["cases"], dependencies=auth)
-    def list_cases(c: Coord, limit: int = 50) -> list[CaseSummary]:
-        return [_summary(case) for case in c.list_cases(min(limit, 200))]
+    def list_cases(c: Coord, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[CaseSummary]:
+        return [_summary(case) for case in c.list_cases(limit)]
 
     @app.get("/cases/{case_id}", tags=["cases"], dependencies=auth)
     def get_case(case_id: str, c: Coord) -> CreditFile:
@@ -194,12 +204,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/cases/{case_id}/audit", tags=["audit"], dependencies=auth)
     def audit_events(case_id: str, c: Coord) -> dict[str, Any]:
+        events, verification = c.audit_log(case_id)
         return {
-            "verification": c.verify_audit_chain(case_id),
-            "events": [e.model_dump(mode="json") for e in c.audit_events(case_id)],
+            "verification": verification.model_dump(),
+            "events": [e.model_dump(mode="json") for e in events],
         }
 
-    @app.get("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
+    # POST: every export is recorded in the audit chain and stored under retention, so a
+    # prefetch, link preview or retry must never create one.
+    @app.post("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
     def audit_pack(case_id: str, c: Coord, who: Officer) -> Response:
         pack = c.export_audit_pack(case_id, who)
         headers = {"Content-Disposition": f'attachment; filename="audit-pack-{case_id}.zip"'}

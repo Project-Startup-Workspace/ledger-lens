@@ -41,13 +41,13 @@ def test_full_officer_flow(client: TestClient) -> None:
     decided = client.post(
         f"/cases/{case_id}/decision",
         json={"outcome": "approve", "reason": "Steady sales"},
-        headers={"X-Goog-Authenticated-User-Email": "accounts.google.com:priya@lender.example"},
     ).json()
     assert decided["decision"]["overridden"] is False
-    assert decided["decision"]["officer_id"] == "priya@lender.example"
+    assert decided["decision"]["officer_id"] == "officer"  # no sign-in configured
 
     assert client.get(f"/cases/{case_id}/audit").json()["verification"]["valid"]
-    pack = client.get(f"/cases/{case_id}/audit-pack")
+    assert client.get(f"/cases/{case_id}/audit-pack").status_code == 405  # export is a POST
+    pack = client.post(f"/cases/{case_id}/audit-pack")
     assert pack.headers["content-type"] == "application/zip"
     check = client.post("/audit-packs/verify", files={"file": ("p.zip", pack.content)}).json()
     assert check["valid"] and check["key_trusted"]
@@ -83,12 +83,17 @@ def test_uploads_are_type_and_size_checked(client: TestClient) -> None:
     empty = client.post(url, data={"kind": "notebook"}, files={"file": ("a.png", b"", "image/png")})
     assert empty.status_code == 422
     csv = (DEMO / "synthetic-grocer-kandy" / "wallet-statement.csv").read_bytes()
+    csv += b"2026-10-01,QR payments received,1000,in\n"  # a different file from the demo one
     windows = ("w.csv", csv, "application/vnd.ms-excel")
     as_excel = client.post(url, data={"kind": "wallet_statement"}, files={"file": windows})
     assert as_excel.status_code == 201 and as_excel.json()["content_type"] == "text/csv"
-    page = (DEMO / "synthetic-grocer-kandy" / "notebook-p1.png").read_bytes()
+    page = (DEMO / "synthetic-market-stall-hcmc" / "notebook-p1.png").read_bytes()
     ok = client.post(url, data={"kind": "notebook"}, files={"file": ("p.png", page, "image/png")})
     assert ok.status_code == 201 and ok.json()["kind"] == "notebook"
+    again = client.post(
+        url, data={"kind": "notebook"}, files={"file": ("p.png", page, "image/png")}
+    )
+    assert again.status_code == 409  # the same page twice would double count its sales
 
 
 def test_officer_header_is_trusted_only_with_a_token(settings: Settings) -> None:
