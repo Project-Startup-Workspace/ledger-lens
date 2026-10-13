@@ -6,7 +6,7 @@ import { api, urls } from "@/lib/api";
 import { money, shortDate } from "@/lib/format";
 import type { AuditLog, CreditFile, Outcome } from "@/lib/types";
 
-import { Badge, Button, Card, recommendationTone } from "./ui";
+import { Badge, Button, Card, ErrorNote, recommendationTone } from "./ui";
 
 /** The officer decides; the system records who, what, why, and seals it in the audit trail. */
 export function DecisionPanel({
@@ -23,19 +23,28 @@ export function DecisionPanel({
   const [reason, setReason] = useState("");
   const [audit, setAudit] = useState<AuditLog | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   async function exportPack() {
     setExporting(true);
+    setExportError(null);
     try {
       const blob = await api.exportAuditPack(id);
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = `audit-pack-${id}.zip`;
       link.click();
-      URL.revokeObjectURL(link.href);
-      setAudit(await api.audit(id)); // the export itself is now in the chain
+      // Revoke later: some browsers read the blob after click() returns.
+      setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+    } catch (e) {
+      setExportError((e as Error).message);
     } finally {
       setExporting(false);
+      // Whatever happened, the chain may have changed (the export is recorded in it).
+      api
+        .audit(id)
+        .then(setAudit)
+        .catch(() => undefined);
     }
   }
   const disclosure = credit.disclosure;
@@ -153,6 +162,7 @@ export function DecisionPanel({
             </li>
           ))}
         </ol>
+        <ErrorNote message={exportError} />
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"

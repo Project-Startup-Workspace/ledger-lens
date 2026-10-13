@@ -63,7 +63,9 @@ CSV_ALIASES = {
     "",
 }
 ANONYMOUS_OFFICER = "officer"
-IAP_USER_HEADER = "x-goog-authenticated-user-email"
+IAP_JWT_HEADER = "x-goog-iap-jwt-assertion"
+IAP_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key-jwk"
+IAP_ISSUER = "https://cloud.google.com/iap"
 OFFICER_HEADER = "x-officer-id"
 
 
@@ -91,11 +93,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def officer(request: Request) -> str:
         """Who is acting, from a trusted source only; never from the request body.
 
-        Behind Identity-Aware Proxy, Google sets the signed-in user's email. The web
-        app's server-side proxy, which holds the API token, may set X-Officer-Id.
+        Behind Identity-Aware Proxy, the officer is the email in IAP's signed JWT, which
+        is verified; a plain header could be sent by anyone who reaches the service
+        directly. The web app's server-side proxy, which holds the API token, may set
+        X-Officer-Id.
         """
-        if settings.trust_iap_header and (iap := request.headers.get(IAP_USER_HEADER)):
-            return iap.removeprefix("accounts.google.com:")
+        if settings.iap_audience:
+            token = request.headers.get(IAP_JWT_HEADER)
+            if not token:
+                raise HTTPException(401, "Identity-Aware Proxy assertion missing")
+            try:
+                return verify_iap_jwt(token, settings.iap_audience)
+            except ValueError:
+                raise HTTPException(401, "invalid Identity-Aware Proxy assertion") from None
         if settings.api_token and (forwarded := request.headers.get(OFFICER_HEADER)):
             return forwarded[:64]
         return ANONYMOUS_OFFICER
@@ -133,8 +143,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/cases", tags=["cases"], dependencies=auth)
-    def list_cases(c: Coord, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[CaseSummary]:
-        return [_summary(case) for case in c.list_cases(limit)]
+    def list_cases(c: Coord, limit: Annotated[int, Query(ge=1)] = 50) -> list[CaseSummary]:
+        return [_summary(case) for case in c.list_cases(min(limit, 200))]  # capped, not refused
 
     @app.get("/cases/{case_id}", tags=["cases"], dependencies=auth)
     def get_case(case_id: str, c: Coord) -> CreditFile:
@@ -227,6 +237,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(c.signing_public_key(), media_type="application/x-pem-file")
 
     return app
+
+
+def verify_iap_jwt(token: str, audience: str) -> str:
+    """The signed-in email from an IAP assertion; ValueError if it is not genuine."""
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token
+
+    claims = id_token.verify_token(
+        token, google_requests.Request(), audience=audience, certs_url=IAP_CERTS_URL
+    )
+    if claims.get("iss") != IAP_ISSUER or not claims.get("email"):
+        raise ValueError("not an Identity-Aware Proxy assertion")
+    return str(claims["email"])
 
 
 def _bearer_auth(settings: Settings) -> Callable[..., None]:

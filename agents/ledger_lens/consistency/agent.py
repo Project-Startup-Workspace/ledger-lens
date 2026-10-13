@@ -21,7 +21,8 @@ class ConsistencyAgent:
         """Compare all notebook pages in the case with its best single statement.
 
         Only one statement is used: summing several would double count transfers between
-        accounts and duplicate uploads. The one with the most readable weeks wins.
+        accounts and duplicate uploads. The one sharing the most readable weeks with the
+        notebook wins.
         """
         min_conf = self._settings.min_extraction_confidence
         same_currency = [x for x in extractions if x.currency.upper() == currency.upper()]
@@ -41,11 +42,11 @@ class ConsistencyAgent:
         if not statements:
             report = compare(notebook, weekly_series([], min_conf), self._tolerance, currency)
         else:
-            statement_id, wallet = max(statements, key=lambda s: _readable_weeks(s[1]))
+            statement_id, wallet = max(statements, key=lambda s: _readable_overlap(s[1], notebook))
             if len(statements) > 1:
                 notes.append(
-                    "Several statements were uploaded; the one with the most readable weeks "
-                    "was compared."
+                    "Several statements were uploaded; the one sharing the most readable "
+                    "weeks with the notebook was compared."
                 )
             report = compare(notebook, wallet, self._tolerance, currency, statement_id)
         report = report.model_copy(update={"notes": [*notes, *report.notes]})
@@ -57,6 +58,9 @@ class ConsistencyAgent:
         return self._settings.consistency_tolerance
 
 
-def _readable_weeks(series: WeeklySeries) -> int:
-    """Weeks with confidently read inflows: a long but unreadable statement verifies nothing."""
-    return len(set(series.totals) - series.unreadable_weeks)
+def _readable_overlap(statement: WeeklySeries, notebook: WeeklySeries) -> int:
+    """Readable statement weeks that the notebook also covers.
+
+    A long statement for another period, or one that cannot be read, verifies nothing.
+    """
+    return len((set(statement.totals) - statement.unreadable_weeks) & set(notebook.totals))

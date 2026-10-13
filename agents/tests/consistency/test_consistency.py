@@ -125,4 +125,4 @@ def test_only_the_most_readable_statement_is_used(settings: Settings) -> None:
     short_copy = wallet.model_copy(update={"evidence_id": "dup", "entries": wallet.entries[:10]})
     report = ConsistencyAgent(settings).check([*extractions, short_copy], "LKR")
     assert report.statement_evidence_id == wallet.evidence_id
-    assert report.flags == [] and any("most readable" in n for n in report.notes)
+    assert report.flags == [] and any("sharing the most readable" in n for n in report.notes)

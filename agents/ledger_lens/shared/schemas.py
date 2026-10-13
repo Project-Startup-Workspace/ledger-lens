@@ -28,10 +28,12 @@ Timestamp = AwareDatetime
 CurrencyCode = Annotated[
     str, AfterValidator(str.upper), Field(pattern=r"^[A-Za-z]{3}$", examples=["LKR", "IDR"])
 ]
-# Shared by the case store and the audit store so both accept exactly the same ids.
-CASE_ID_PATTERN = r"[A-Za-z0-9_-]{1,64}"
-# Model versions name files on disk, so they are restricted to safe characters.
-ModelVersion = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]
+# Case ids are also storage keys and file names: they start with a letter or digit, so
+# every store (case files, blobs, audit events) accepts exactly the same set.
+CASE_ID_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
+# Versions safe to use as file names. Enforced where a version is turned into a path,
+# not on the contract: external credit files may carry any version string.
+MODEL_VERSION_PATTERN = r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}"
 
 Money = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
 JurisdictionCode = Annotated[str, Field(pattern=r"^[a-z]{2}$", examples=["lk", "sg", "in"])]
@@ -202,7 +204,10 @@ class CounterfactualStep(Contract):
 
 
 class RiskResult(Contract):
-    model_version: ModelVersion
+    model_version: str
+    # SHA-256 of the exact artifact that scored the case; the version alone does not
+    # change when a model is retrained under the same name.
+    model_fingerprint: str | None = None
     probability_of_default: float = Field(ge=0, le=1)
     grade: RiskGrade
     recommendation: Literal["approve", "refer", "decline"]
@@ -342,7 +347,7 @@ class CreditFile(Contract):
     revision: int = Field(default=0, ge=0)  # bumped on every save; guards concurrent writers
     status: CaseStatus = CaseStatus.DRAFT
     created_at: Timestamp = Field(default_factory=utc_now)
-    updated_at: Timestamp = Field(default_factory=utc_now)  # set by the repository on save
+    updated_at: Timestamp | None = None  # set by the repository on each save
     jurisdiction: JurisdictionCode
     applicant: Applicant
     loan: LoanRequest

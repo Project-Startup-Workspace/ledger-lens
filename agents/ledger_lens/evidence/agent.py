@@ -2,6 +2,7 @@
 
 import logging
 import math
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -26,6 +27,11 @@ CSV_TYPES = {"text/csv", "application/csv"}
 # Twelve months of history plus slack for a notebook started a few weeks earlier.
 MAX_HISTORY = timedelta(days=400)
 REMOVED = "[removed: suspected instructions]"
+_CURRENCY_CODE = re.compile(r"[A-Z]{3}")
+SPLIT_INJECTION_WARNING = (
+    "Text across several lines of the document looks like instructions to the system. "
+    "Nothing was removed; check the original document before relying on it."
+)
 INJECTION_WARNING = (
     "The document contains text that looks like instructions to the system. "
     "It was removed; check the original document."
@@ -60,18 +66,22 @@ class EvidenceAgent:
             entries, warnings = _to_entries(wire, doc.id)
             warnings = [*wire.warnings, *warnings]
             script, language, other_text = wire.script, wire.language, wire.other_text
-            read_currency = (wire.currency or currency).upper()
+            read_currency = (wire.currency or currency).strip().upper()
             model = f"{self._settings.model_extract}/{prompts.PROMPT_VERSION}"
 
         entries, date_warnings = _within_window(entries, reference_date)
         entries, warnings, flagged = self._screen(entries, warnings, other_text)
         if read_currency != currency.upper():
-            # Never add amounts in another currency into the case totals.
+            # Never add amounts in another currency into the case totals. The model's
+            # value is only quoted when it is a plain currency code: free text from the
+            # page must not reach the officer's warnings unscreened.
+            shown = read_currency if _CURRENCY_CODE.fullmatch(read_currency) else "another currency"
             warnings.append(
-                f"The document appears to be in {read_currency}, not {currency}. "
+                f"The document appears to be in {shown}, not {currency.upper()}. "
                 "Its amounts were sent to review instead of the totals."
             )
             entries = [e.model_copy(update={"confidence": 0.0}) for e in entries]
+            read_currency = shown if shown != "another currency" else "XXX"  # ISO "no currency"
         log.info(
             "evidence read",
             extra={"evidence_id": doc.id, "entries": len(entries), "flagged": flagged},
@@ -92,14 +102,10 @@ class EvidenceAgent:
     ) -> tuple[list[LedgerEntry], list[str], bool]:
         """Remove text that reads like instructions, wherever the model or file put it.
 
-        The whole page is screened in one call; only a flagged page is screened line by
-        line to find what to remove, so a clean page costs a single safety check.
+        Every line is screened on its own (a classifier can miss one instruction diluted
+        in a long page), and the joined page is screened too, which catches a phrase
+        split across lines.
         """
-        page = "\n".join(
-            [other_text, *warnings, *(f"{e.description}\n{e.raw_text}" for e in entries)]
-        )
-        if not self._safety.screen(page).flagged:
-            return entries, warnings, False
         removed = self._safety.screen(other_text).flagged
         clean_entries = []
         for entry in entries:
@@ -113,10 +119,14 @@ class EvidenceAgent:
                 removed = True
             else:
                 clean_warnings.append(warning)
-        # The page matched as a whole even if no single line did (a phrase split across
-        # lines), so the officer is always warned.
+        page = "\n".join(
+            [other_text, *warnings, *(f"{e.description}\n{e.raw_text}" for e in entries)]
+        )
+        split_phrase = not removed and self._safety.screen(page).flagged
+        if not (removed or split_phrase):
+            return entries, warnings, False
         log.warning("possible prompt injection in evidence", extra={"lines_removed": removed})
-        clean_warnings.append(INJECTION_WARNING)
+        clean_warnings.append(INJECTION_WARNING if removed else SPLIT_INJECTION_WARNING)
         return clean_entries, clean_warnings, True
 
 

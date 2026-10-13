@@ -63,8 +63,9 @@ def grade_for(probability: float) -> RiskGrade:
 
 
 class RiskAgent:
-    def __init__(self, model: LogisticModel) -> None:
+    def __init__(self, model: LogisticModel, fingerprint: str | None = None) -> None:
         self._model = model
+        self._fingerprint = fingerprint  # of the artifact file, recorded on every score
 
     def assess(self, case: CreditFile) -> RiskResult:
         """Score the case and explain the score in plain words."""
@@ -88,6 +89,7 @@ class RiskAgent:
             path.insert(0, RESOLVE_FLAGS_STEP)
         result = RiskResult(
             model_version=self._model.version,
+            model_fingerprint=self._fingerprint,
             probability_of_default=round(probability, 4),
             grade=grade,
             recommendation=recommendation,

@@ -2,12 +2,31 @@
  * Sign-in for the web app. When LL_WEB_USERS is set ("name:password,name2:password2"),
  * every page and API call needs HTTP Basic credentials, and the signed-in name becomes
  * the officer recorded on actions. Behind Identity-Aware Proxy, leave it unset and set
- * LL_TRUST_IAP=true: IAP then signs officers in and its user header names the officer.
+ * LL_IAP_AUDIENCE: the officer is then the email in IAP's signed assertion, verified
+ * against Google's keys. A plain header is never trusted: anyone reaching the service
+ * directly could send one.
  */
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const OFFICER_HEADER = "x-ll-officer";
-const IAP_USER_HEADER = "x-goog-authenticated-user-email";
+const IAP_JWT_HEADER = "x-goog-iap-jwt-assertion";
+const IAP_KEYS = createRemoteJWKSet(new URL("https://www.gstatic.com/iap/verify/public_key-jwk"));
+
+/** The signed-in email from an IAP assertion, or null if it is missing or not genuine. */
+async function iapOfficer(request: NextRequest, audience: string): Promise<string | null> {
+  const token = request.headers.get(IAP_JWT_HEADER);
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, IAP_KEYS, {
+      audience,
+      issuer: "https://cloud.google.com/iap",
+    });
+    return typeof payload.email === "string" ? payload.email : null;
+  } catch {
+    return null;
+  }
+}
 
 /** "name:pass:word" -> ["name", "pass:word"]; passwords may contain colons. */
 function splitFirstColon(value: string): [string, string] {
@@ -29,7 +48,7 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.delete(OFFICER_HEADER); // never trust a client-supplied identity
 
@@ -51,11 +70,10 @@ export function proxy(request: NextRequest) {
       });
     }
     headers.set(OFFICER_HEADER, name);
-  } else if (process.env.LL_TRUST_IAP === "true") {
-    // Only trustworthy when IAP fronts this app: IAP sets this header and strips any
-    // value a client sends.
-    const iapUser = request.headers.get(IAP_USER_HEADER);
-    if (iapUser) headers.set(OFFICER_HEADER, iapUser.replace(/^accounts\.google\.com:/, ""));
+  } else if (process.env.LL_IAP_AUDIENCE) {
+    const officer = await iapOfficer(request, process.env.LL_IAP_AUDIENCE);
+    if (!officer) return new NextResponse("Identity-Aware Proxy sign-in required", { status: 401 });
+    headers.set(OFFICER_HEADER, officer);
   }
   return NextResponse.next({ request: { headers } });
 }

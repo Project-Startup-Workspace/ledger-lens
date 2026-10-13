@@ -11,7 +11,7 @@ import hashlib
 from pathlib import Path
 from typing import Protocol
 
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -85,7 +85,7 @@ def verify_signature(public_key_pem: bytes, data: bytes, signature_b64: str) -> 
     """False for any bad key, signature or encoding: input may come from a tampered pack."""
     try:
         key = serialization.load_pem_public_key(public_key_pem)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, UnsupportedAlgorithm):
         return False
     if not isinstance(key, Ed25519PublicKey):
         return False

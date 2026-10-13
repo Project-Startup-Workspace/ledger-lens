@@ -11,7 +11,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-_SAFE_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+from ledger_lens.shared.schemas import MODEL_VERSION_PATTERN
+
+_SAFE_VERSION = re.compile(MODEL_VERSION_PATTERN)
 
 
 class ModelRecord(BaseModel):
@@ -38,14 +40,28 @@ def has_passing_bias_report(artifact: Path) -> bool:
     ) == artifact_fingerprint(artifact)
 
 
-def artifact_for_version(active_artifact: Path, version: str) -> Path | None:
-    """The artifact file for `version`: the active one, or `<version>.json` beside it."""
+def artifact_for_version(
+    active_artifact: Path, version: str, fingerprint: str | None = None
+) -> Path | None:
+    """The artifact file for `version`: the active one, or `<version>.json` beside it.
+
+    With `fingerprint`, only the exact artifact counts: a model retrained under the same
+    version name is a different model.
+    """
     if not _SAFE_VERSION.fullmatch(version):
         return None
     for path in (active_artifact, active_artifact.parent / f"{version}.json"):
-        if _read_json(path).get("version") == version:
+        if _read_json(path).get("version") != version:
+            continue
+        if fingerprint is None or artifact_fingerprint(path) == fingerprint:
             return path
     return None
+
+
+def bias_report_matches(artifact: Path) -> bool:
+    """True when the bias report beside `artifact` was run on exactly this artifact."""
+    report = _read_json(bias_report_path(artifact))
+    return report.get("model_fingerprint") == artifact_fingerprint(artifact)
 
 
 def model_record(active_artifact: Path, version: str | None) -> ModelRecord | None:

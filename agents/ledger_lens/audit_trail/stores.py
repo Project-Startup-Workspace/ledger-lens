@@ -1,8 +1,11 @@
 """Audit stores for deployment. The local JSONL store lives in chain.py."""
 
 import random
+import re
 import time
 from typing import Any
+
+from pydantic import ValidationError
 
 from ledger_lens.audit_trail.chain import (
     GENESIS,
@@ -13,8 +16,9 @@ from ledger_lens.audit_trail.chain import (
 )
 from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.pii import mask_value
-from ledger_lens.shared.schemas import utc_now
+from ledger_lens.shared.schemas import CASE_ID_PATTERN, utc_now
 
+_CASE_ID = re.compile(CASE_ID_PATTERN)
 TRANSACTION_ATTEMPTS = 20
 APPEND_ROUNDS = 5  # each round retries the whole transaction after a jittered pause
 
@@ -35,6 +39,10 @@ class FirestoreAuditStore:
     def append(
         self, case_id: str, event_type: str, actor: str, payload: dict[str, Any]
     ) -> AuditEvent:
+        from google.api_core.exceptions import Aborted  # cloud extra, imported on use
+
+        if not _CASE_ID.fullmatch(case_id):
+            raise ValueError(f"invalid case id {case_id!r}")
         head_ref = self._db.collection("audit").document(case_id)
         firestore = self._firestore
 
@@ -61,7 +69,9 @@ class FirestoreAuditStore:
             try:
                 result: AuditEvent = write(self._db.transaction(max_attempts=TRANSACTION_ATTEMPTS))
                 return result
-            except ValueError:  # raised by the SDK when every attempt was aborted
+            except ValidationError:
+                raise  # a malformed event fails the same way every time; never retry it
+            except (ValueError, Aborted):  # every attempt aborted, or an aborted read
                 if round_no == APPEND_ROUNDS:
                     raise
                 time.sleep(random.uniform(0.05, 0.2) * round_no)  # noqa: S311 - jitter only

@@ -131,7 +131,9 @@ def test_screening_folds_special_latin_letters_and_flags_other_scripts() -> None
 def test_names_in_other_scripts_go_to_review(auditpulse: AuditPulse) -> None:
     case = make_case()
     case.applicant.full_name = "கமலா பெரேரா"
-    assert statuses(auditpulse.check(case))["ALL-SAN-01"] is FindingStatus.REVIEW
+    result = statuses(auditpulse.check(case))
+    assert result["ALL-SAN-02"] is FindingStatus.REVIEW
+    assert result["ALL-SAN-01"] is FindingStatus.PASS  # no list match, a different problem
 
 
 def test_key_fact_statement_terms() -> None:
@@ -188,6 +190,7 @@ def test_sri_lanka_before_decision(auditpulse: AuditPulse) -> None:
     assert statuses(report) == {
         "ALL-CON-01": FindingStatus.PASS,
         "ALL-SAN-01": FindingStatus.PASS,
+        "ALL-SAN-02": FindingStatus.PASS,
         "LK-LIC-01": FindingStatus.PASS,
         "LK-DOC-01": FindingStatus.PENDING,
         "LK-AGE-01": FindingStatus.PASS,

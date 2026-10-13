@@ -177,7 +177,7 @@ def test_malformed_packs_are_reported_not_raised(pack: bytes, corrupt) -> None:
 
 
 def test_non_zip_is_reported() -> None:
-    assert verify_pack(b"plain text").problems == ["not a zip file"]
+    assert verify_pack(b"plain text").problems == ["pack is corrupted or not a readable zip file"]
 
 
 def test_build_refuses_other_cases_events_and_broken_chains(

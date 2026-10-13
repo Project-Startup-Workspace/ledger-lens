@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import zipfile
+import zlib
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -116,11 +117,16 @@ def verify_pack(data: bytes, trusted_public_key: bytes | None = None) -> PackVer
     Without `trusted_public_key` the signature is checked against the key inside the
     pack, which proves integrity but not origin; `key_trusted` is then False.
     """
-    problems: list[str] = []
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        return _invalid("not a zip file")
+        return _verify(data, trusted_public_key)
+    except (zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError, EOFError):
+        # Corrupt, truncated, encrypted or oddly compressed members: a tampered pack.
+        return _invalid("pack is corrupted or not a readable zip file")
+
+
+def _verify(data: bytes, trusted_public_key: bytes | None) -> PackVerification:
+    problems: list[str] = []
+    archive = zipfile.ZipFile(io.BytesIO(data))
     with archive:
         # Sizes are declared in the zip directory, so a zip bomb is refused before inflating.
         if sum(info.file_size for info in archive.infolist()) > MAX_UNPACKED_BYTES:

@@ -55,6 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0 # no floating major tag is published
+        with:
+          enable-cache: true
       - name: Start the Firestore and Cloud Storage emulators
         working-directory: .
         run: |

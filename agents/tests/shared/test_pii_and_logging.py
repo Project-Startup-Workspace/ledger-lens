@@ -40,11 +40,18 @@ def test_pseudonym_is_stable_and_opaque() -> None:
 
 
 def test_json_formatter_adds_case_id_and_masks_extras() -> None:
-    record = logging.makeLogRecord(
-        {"msg": "read notebook for Siti Rahma", "levelname": "INFO", "phone": "0771234567"}
-    )
     with case_context("case_1", names=("Siti Rahma",)):
-        line = json.loads(JsonFormatter().format(record))
+        record = logging.getLogger("t").makeRecord(
+            "t",
+            logging.INFO,
+            __file__,
+            1,
+            "read notebook for Siti Rahma",
+            None,
+            None,
+            extra={"phone": "0771234567"},
+        )
+    line = json.loads(JsonFormatter().format(record))  # formatted after the context ended
     assert line["case_id"] == "case_1"
     assert "Siti" not in line["message"]
     assert line["phone"] == "[phone]"

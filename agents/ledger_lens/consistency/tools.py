@@ -54,9 +54,11 @@ def weekly_series(entries: Iterable[LedgerEntry], min_confidence: float) -> Week
         day = entry.entry_date
         series.first_day = min(series.first_day or day, day)
         series.last_day = max(series.last_day or day, day)
+        if entry.direction is not Direction.IN:
+            continue  # only money in is compared; an unread payment changes nothing
         if entry.confidence < min_confidence:
             series.unreadable_weeks.add(week_start(day))
-        elif entry.direction is Direction.IN and entry.amount > 0:
+        elif entry.amount > 0:
             series.totals[week_start(day)] += entry.amount
     return series
 

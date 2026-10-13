@@ -4,14 +4,16 @@ Each stage is a public method, so the HTTP API, the ADK workflow and tests all d
 exactly the same logic. Every state change is saved and appended to the audit chain.
 """
 
+import contextvars
 import threading
 import weakref
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from ledger_lens.audit_trail.chain import (
     AuditEvent,
@@ -36,7 +38,7 @@ from ledger_lens.risk.agent import RiskAgent
 from ledger_lens.risk.model import LogisticModel
 from ledger_lens.risk.model_card import model_card
 from ledger_lens.shared.config import Settings
-from ledger_lens.shared.governance import artifact_for_version
+from ledger_lens.shared.governance import artifact_fingerprint, artifact_for_version
 from ledger_lens.shared.llm import build_llm
 from ledger_lens.shared.logs import case_context
 from ledger_lens.shared.pii import pseudonym
@@ -97,11 +99,12 @@ def build_services(settings: Settings) -> Services:
     llm = build_llm(settings)
     safety = build_safety_screen(settings)
     model = LogisticModel.load(settings.risk_model_path)
+    fingerprint = artifact_fingerprint(settings.risk_model_path)
     return Services(
         settings=settings,
         evidence=EvidenceAgent(llm, safety, settings),
         consistency=ConsistencyAgent(settings),
-        risk=RiskAgent(model),
+        risk=RiskAgent(model, fingerprint),
         model=model,
         auditpulse=AuditPulse(
             RulePackRegistry(settings.rule_packs_dir),
@@ -256,10 +259,11 @@ class Coordinator:
             raise CaseStateError("upload at least one notebook page before assessing")
         done = {x.evidence_id for x in case.extractions}
         pending = [d for d in case.evidence if d.id not in done]
+        # One reference date for every page of the case: the latest upload, as a local
+        # calendar date in the lender's market, so entries written "today" are accepted.
+        reference = local_date(max(d.uploaded_at for d in case.evidence), case.jurisdiction)
 
         def read(doc: EvidenceDocument) -> ExtractionResult:
-            # Entries can be dated up to the upload; a day of slack covers time zones.
-            reference = doc.uploaded_at.date() + timedelta(days=1)
             return self._s.evidence.read(
                 doc,
                 self._s.blobs.get(doc.blob_key),
@@ -267,23 +271,19 @@ class Coordinator:
                 currency=case.loan.currency,
             )
 
-        # Pages are independent, so model calls run in parallel; results are recorded in
-        # upload order so the audit chain does not depend on which call finished first.
+        # Pages are independent, so model calls run in parallel. Each call runs in a copy
+        # of this context, so its log lines keep the case id and name masking. Results
+        # are saved in upload order; if one page fails, the pages read before it are kept
+        # and the rest are cancelled, so a retry does not pay for them again.
         with ThreadPoolExecutor(max_workers=READ_WORKERS) as pool:
-            results = list(pool.map(read, pending))
-        for doc, result in zip(pending, results, strict=True):
-            case.extractions.append(result)
-            self._save(
-                case,
-                "evidence_read",
-                actor,
-                {
-                    "evidence_id": doc.id,
-                    "entries": len(result.entries),
-                    "model": result.model,
-                    "warnings": len(result.warnings),
-                },
-            )
+            futures = [pool.submit(contextvars.copy_context().run, read, d) for d in pending]
+            try:
+                for doc, future in zip(pending, futures, strict=True):
+                    self._record_read(case, doc, future.result(), actor)
+            except Exception:
+                for future in futures:
+                    future.cancel()
+                raise
         notebook = [
             e for x in case.extractions if x.kind is EvidenceKind.NOTEBOOK for e in x.entries
         ]
@@ -298,6 +298,22 @@ class Coordinator:
                 "weeks": case.cash_flow.weeks_covered,
                 "avg_weekly_net": str(case.cash_flow.avg_weekly_net),
                 "for_review": len(case.cash_flow.entries_for_review),
+            },
+        )
+
+    def _record_read(
+        self, case: CreditFile, doc: EvidenceDocument, result: ExtractionResult, actor: str
+    ) -> None:
+        case.extractions.append(result)
+        self._save(
+            case,
+            "evidence_read",
+            actor,
+            {
+                "evidence_id": doc.id,
+                "entries": len(result.entries),
+                "model": result.model,
+                "warnings": len(result.warnings),
             },
         )
 
@@ -452,8 +468,16 @@ class Coordinator:
         return events, verify_chain(events)
 
     def export_audit_pack(self, case_id: str, actor: str) -> bytes:
-        """Record the export, then sign and store a pack that includes that record."""
+        """Record the export, then sign and store a pack that includes that record.
+
+        Everything that can fail on bad inputs (model card, officer report) is prepared
+        before the export event is sealed, so the chain never records an export that
+        did not happen.
+        """
         with self._case(case_id) as case:
+            card = self._model_card_for(case)
+            report = officer_report(case)
+            compliance = [case.compliance] if case.compliance else []
             exported_at = utc_now()
             seq = len(self._s.audit.events(case.case_id))
             # The event's sequence number makes every stored pack's key unique.
@@ -461,18 +485,18 @@ class Coordinator:
             self._record(
                 case, "audit_pack_exported", actor, {"snapshot": snapshot_hash(case), "key": key}
             )
-            pack = build_pack(
-                case,
-                self._s.audit.events(case.case_id),
-                [case.compliance] if case.compliance else [],
-                self._model_card_for(case),
-                officer_report(case),
-                self._s.signer,
-            )
             try:
+                pack = build_pack(
+                    case,
+                    self._s.audit.events(case.case_id),
+                    compliance,
+                    card,
+                    report,
+                    self._s.signer,
+                )
                 self._s.packs.put(key, pack, "application/zip")
             except Exception:
-                self._record(case, "audit_pack_store_failed", SYSTEM, {"key": key})
+                self._record(case, "audit_pack_export_failed", SYSTEM, {"key": key})
                 raise
             return pack
 
@@ -480,13 +504,26 @@ class Coordinator:
         return self._s.signer.public_key_pem()
 
     def _model_card_for(self, case: CreditFile) -> dict[str, Any] | None:
-        """Card for the model version that scored this case, which may not be the active one."""
+        """Card for the exact artifact that scored this case, which may not be active.
+
+        A missing or unreadable artifact gives a card that says so, rather than failing
+        the export: the pack still records everything else about the case.
+        """
         if case.risk is None:
             return None
-        path = artifact_for_version(self._s.settings.risk_model_path, case.risk.model_version)
+        version, fingerprint = case.risk.model_version, case.risk.model_fingerprint
+        path = artifact_for_version(self._s.settings.risk_model_path, version, fingerprint)
         if path is None:
-            return {"version": case.risk.model_version, "status": "artifact no longer available"}
-        return model_card(LogisticModel.load(path), path)
+            return {"version": version, "status": "the artifact that scored this case is gone"}
+        try:
+            model = (
+                self._s.model
+                if path == self._s.settings.risk_model_path
+                else LogisticModel.load(path)
+            )
+            return model_card(model, path)
+        except (OSError, ValueError, KeyError) as exc:
+            return {"version": version, "status": f"model card unavailable: {exc}"[:500]}
 
     # --- Internals --------------------------------------------------------------------
 
@@ -538,3 +575,12 @@ def _terms(disclosure: Disclosure) -> tuple[object, ...]:
         disclosure.instalments,
         disclosure.total_repayable,
     )
+
+
+# Local calendar for each market with a rule pack; others fall back to UTC.
+MARKET_TIME_ZONES = {"lk": "Asia/Colombo", "sg": "Asia/Singapore", "in": "Asia/Kolkata"}
+
+
+def local_date(moment: datetime, jurisdiction: str) -> date:
+    """The calendar date at `moment` in the market's time zone."""
+    return moment.astimezone(ZoneInfo(MARKET_TIME_ZONES.get(jurisdiction, "UTC"))).date()

@@ -9,12 +9,12 @@ npm ci
 npm run dev        # http://localhost:3000 (expects the API on :8080: `make api`)
 ```
 
-| Variable        | Meaning                                                                                        | Default                 |
-| --------------- | ---------------------------------------------------------------------------------------------- | ----------------------- |
-| `LL_API_URL`    | Ledger Lens API base URL                                                                       | `http://localhost:8080` |
-| `LL_API_TOKEN`  | Bearer token for the API, if it requires one                                                   | unset                   |
-| `LL_TRUST_IAP`  | `true` only when Identity-Aware Proxy fronts the app; IAP's signed-in user becomes the officer | unset                   |
-| `LL_OFFICER_ID` | Officer recorded on actions until sign-in exists                                               | `officer`               |
+| Variable          | Meaning                                                                                                     | Default                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `LL_API_URL`      | Ledger Lens API base URL                                                                                    | `http://localhost:8080` |
+| `LL_API_TOKEN`    | Bearer token for the API, if it requires one                                                                | unset                   |
+| `LL_IAP_AUDIENCE` | Behind Identity-Aware Proxy: the audience of IAP's signed assertion; the verified email becomes the officer | unset                   |
+| `LL_OFFICER_ID`   | Officer recorded on actions until sign-in exists                                                            | `officer`               |
 
 These are server-only: the browser calls `/api/ll/*`, a route handler that forwards to the API and adds the token and officer id (`src/app/api/ll/[...path]/route.ts`).
 

@@ -2,14 +2,16 @@
 (Cloud Storage and Firestore) when deployed. Callers depend only on the protocols."""
 
 import fcntl
+import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.schemas import CreditFile, utc_now
 
-_SAFE_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+_SAFE_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./-]*$")
 
 
 class ConcurrentUpdateError(RuntimeError):
@@ -85,11 +87,17 @@ class LocalCaseRepository:
         return CreditFile.model_validate_json(path.read_text(encoding="utf-8"))
 
     def list(self, limit: int = 50) -> list[CreditFile]:
-        """Most recently updated first. Every save rewrites the file, so its modification
-        time is the update time and only the newest `limit` files need parsing."""
-        paths = sorted(self._root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        cases = [CreditFile.model_validate_json(p.read_text("utf-8")) for p in paths[:limit]]
-        return sorted(cases, key=lambda c: c.updated_at, reverse=True)
+        """Most recently updated first.
+
+        Ordering reads only each file's timestamps (a plain JSON parse); full validation
+        is spent on the `limit` cases returned.
+        """
+        stamped = []
+        for path in self._root.glob("*.json"):
+            raw = json.loads(path.read_text("utf-8"))
+            stamped.append((raw.get("updated_at") or raw["created_at"], raw))
+        stamped.sort(key=lambda item: datetime.fromisoformat(item[0]), reverse=True)
+        return [CreditFile.model_validate(raw) for _, raw in stamped[:limit]]
 
 
 class GcsBlobStore:
