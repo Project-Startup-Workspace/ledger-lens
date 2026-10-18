@@ -1,0 +1,56 @@
+Ledger Lens
+Copyright (c) 2026 the FireHackers team. All rights reserved.
+
+This software, including its source code, documentation, data, models, rule
+packs and designs (the "Software"), is proprietary. It is made publicly
+visible only so that it can be judged in the AI Builder Cup. Making it
+visible does not make it open source.
+
+1. Evaluation permission
+
+   Organisers, judges and reviewers of the AI Builder Cup may view, download,
+   build and run the Software, and use the deployed prototype, solely to
+   evaluate this team's submission. This permission ends when judging of the
+   competition, including any final rounds, is complete.
+
+2. What is not permitted
+
+   Except as section 1 allows, or the copyright holders agree in writing, no
+   one may:
+
+   a. copy, modify, translate or create derivative works of the Software;
+   b. distribute, publish, sublicense, sell, rent or lend the Software;
+   c. use the Software, or any part of it, in production, commercially, or to
+      provide a product or service to others;
+   d. use the Software to train, fine-tune or evaluate machine-learning models,
+      other than as part of evaluating the submission;
+   e. remove or alter this notice.
+
+   GitHub's Terms of Service allow GitHub users to view and fork public
+   repositories on GitHub. That use grants no rights beyond those terms and
+   this licence.
+
+3. Third-party components
+
+   Third-party libraries, fonts and services used by the Software remain under
+   their own licences. This licence does not change those licences.
+
+4. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE AND NON-INFRINGEMENT. The risk model is illustrative and
+   the rule packs are drafts; neither is financial, legal or lending advice.
+
+5. Limitation of liability
+
+   IN NO EVENT WILL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+   ITS USE.
+
+6. Termination
+
+   Any use outside this licence ends the permission in section 1 at once.
+
+For any other use, including commercial licensing, contact the copyright
+holders through the repository owner on GitHub.
