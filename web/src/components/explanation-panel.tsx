@@ -9,7 +9,16 @@ import type { Explanation } from "@/lib/types";
 import { Badge, Button, Card, ErrorNote } from "./ui";
 
 /** What the borrower hears: plain words in their language, read aloud where possible. */
-export function ExplanationPanel({ caseId, initial }: { caseId: string; initial: Explanation }) {
+export function ExplanationPanel({
+  caseId,
+  initial,
+  canChange = true,
+}: {
+  caseId: string;
+  initial: Explanation;
+  /** Auditors read the explanation as written; choosing a language writes a new one. */
+  canChange?: boolean;
+}) {
   const [explanation, setExplanation] = useState(initial);
   const [language, setLanguage] = useState(initial.borrower_language);
   const [busy, setBusy] = useState(false);
@@ -42,7 +51,7 @@ export function ExplanationPanel({ caseId, initial }: { caseId: string; initial:
       action={
         <select
           value={language}
-          disabled={busy}
+          disabled={busy || !canChange}
           onChange={(e) => translate(e.target.value)}
           className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
         >

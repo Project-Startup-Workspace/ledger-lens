@@ -340,6 +340,18 @@ class Explanation(Contract):
     facts_digest: str = ""  # the facts, model and prompt it was written from
 
 
+class AuditReview(Contract):
+    """An audit firm's review of a case, recorded alongside the case's audit chain."""
+
+    id: str = Field(default_factory=lambda: new_id("rv"))
+    org_id: str
+    reviewer: str
+    outcome: Literal["no_issues", "issues_found"]
+    note: str = Field(min_length=1, max_length=2000)
+    snapshot: str  # hash of the case as it was reviewed
+    reviewed_at: Timestamp = Field(default_factory=utc_now)
+
+
 class CaseStatus(StrEnum):
     DRAFT = "draft"
     ASSESSED = "assessed"
@@ -373,3 +385,67 @@ class CreditFile(Contract):
     translations: dict[str, Explanation] = {}
     disclosure: Disclosure | None = None
     decision: OfficerDecision | None = None
+    # Who may see the case. A lender's own case has no business; an owner's application
+    # has no lender until the owner sends it to one.
+    lender_org_id: str | None = None
+    business_org_id: str | None = None
+    reviews: list[AuditReview] = []
+
+
+# --- Organisations -----------------------------------------------------------------------------
+
+
+class OrgType(StrEnum):
+    PLATFORM = "platform"  # runs Ledger Lens; manages organisations, never sees cases
+    LENDER = "lender"
+    AUDIT_FIRM = "audit_firm"
+    BUSINESS = "business"
+
+
+class Role(StrEnum):
+    PLATFORM_ADMIN = "platform_admin"
+    ADMIN = "admin"  # manages the organisation's members; also does its members' work
+    OFFICER = "officer"
+    AUDITOR = "auditor"
+    OWNER = "owner"
+
+
+ROLES_BY_ORG_TYPE: dict[OrgType, frozenset[Role]] = {
+    OrgType.PLATFORM: frozenset({Role.PLATFORM_ADMIN}),
+    OrgType.LENDER: frozenset({Role.ADMIN, Role.OFFICER}),
+    OrgType.AUDIT_FIRM: frozenset({Role.ADMIN, Role.AUDITOR}),
+    OrgType.BUSINESS: frozenset({Role.OWNER}),
+}
+ORG_ID_PATTERN = r"org_[a-z0-9_]{1,40}"
+
+
+class Organisation(Contract):
+    id: str = Field(default_factory=lambda: new_id("org"), pattern=f"^{ORG_ID_PATTERN}$")
+    name: str = Field(min_length=1, max_length=120)
+    type: OrgType
+    jurisdiction: JurisdictionCode | None = None
+    created_at: Timestamp = Field(default_factory=utc_now)
+
+
+class Member(Contract):
+    """A person's place in one organisation. `uid` is their Firebase Auth user id."""
+
+    uid: str
+    email: str
+    display_name: str = ""
+    org_id: str
+    role: Role
+    disabled: bool = False
+    created_at: Timestamp = Field(default_factory=utc_now)
+
+
+class AccessGrant(Contract):
+    """An organisation lets an audit firm see its cases, until it revokes the grant."""
+
+    id: str = Field(default_factory=lambda: new_id("gr"))
+    grantor_org_id: str
+    grantee_org_id: str
+    granted_by: str
+    granted_at: Timestamp = Field(default_factory=utc_now)
+    revoked_at: Timestamp | None = None
+    revoked_by: str | None = None

@@ -1,13 +1,17 @@
 /**
- * Sign-in for the web app. When LL_WEB_USERS is set ("name:password,name2:password2"),
+ * Sign-in for the web app. When LL_FIREBASE_PROJECT is set, every page and API call needs
+ * a valid Firebase ID token in the session cookie; roles are applied by the API, which
+ * checks the token again. When LL_WEB_USERS is set ("name:password,name2:password2"),
  * every page and API call needs HTTP Basic credentials, and the signed-in name becomes
  * the officer recorded on actions. Behind Identity-Aware Proxy, leave it unset and set
  * LL_IAP_AUDIENCE: the officer is then the email in IAP's signed assertion, verified
  * against Google's keys. A plain header is never trusted: anyone reaching the service
  * directly could send one.
  */
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
+
+import { PUBLIC_PATHS, SESSION_COOKIE } from "@/lib/session";
 
 export const OFFICER_HEADER = "x-ll-officer";
 // Signed-in pages must never sit in a shared cache such as the Firebase Hosting CDN,
@@ -15,6 +19,39 @@ export const OFFICER_HEADER = "x-ll-officer";
 const PRIVATE = "private, no-store";
 const IAP_JWT_HEADER = "x-goog-iap-jwt-assertion";
 const IAP_KEYS = createRemoteJWKSet(new URL("https://www.gstatic.com/iap/verify/public_key-jwk"));
+const FIREBASE_KEYS = createRemoteJWKSet(
+  new URL(
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
+  ),
+);
+
+/** Whether the session cookie holds a genuine, unexpired ID token for this project. */
+async function firebaseSignedIn(request: NextRequest, project: string): Promise<boolean> {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return false;
+  const issuer = `https://securetoken.google.com/${project}`;
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    // The local emulator signs nothing; its tokens are checked for shape and time only.
+    // The variable is never set in deployment, and the API verifies every token again.
+    try {
+      const claims = decodeJwt(token);
+      return (
+        claims.aud === project && claims.iss === issuer && (claims.exp ?? 0) * 1000 > Date.now()
+      );
+    } catch {
+      return false;
+    }
+  }
+  try {
+    await jwtVerify(token, FIREBASE_KEYS, {
+      audience: project,
+      issuer,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** The signed-in email from an IAP assertion, or null if it is missing or not genuine. */
 async function iapOfficer(request: NextRequest, audience: string): Promise<string | null> {
@@ -67,6 +104,26 @@ export async function proxy(request: NextRequest) {
     }
     headers.set(OFFICER_HEADER, officer);
     return signedIn(headers);
+  }
+
+  const project = process.env.LL_FIREBASE_PROJECT;
+  if (project) {
+    const path = request.nextUrl.pathname;
+    if (PUBLIC_PATHS.includes(path) || (await firebaseSignedIn(request, project))) {
+      return signedIn(headers);
+    }
+    if (path.startsWith("/api/")) {
+      return new NextResponse("Sign-in required", {
+        status: 401,
+        headers: { "cache-control": PRIVATE },
+      });
+    }
+    // The sign-in page renews an expired token silently when Firebase still knows the user.
+    const login = new URL("/login", request.url);
+    login.searchParams.set("next", path + request.nextUrl.search);
+    const response = NextResponse.redirect(login);
+    response.headers.set("cache-control", PRIVATE);
+    return response;
   }
 
   const known = users();

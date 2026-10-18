@@ -13,10 +13,13 @@ export function DecisionPanel({
   credit,
   busy,
   run,
+  canDecide,
 }: {
   credit: CreditFile;
   busy: boolean;
   run: (action: () => Promise<unknown>) => Promise<void>;
+  /** Only the lender's staff decide; everyone else sees the outcome when it is recorded. */
+  canDecide: boolean;
 }) {
   const id = credit.case_id;
   const [outcome, setOutcome] = useState<Outcome>(credit.risk?.recommendation ?? "refer");
@@ -76,7 +79,8 @@ export function DecisionPanel({
             {disclosure.acknowledged_at ? (
               <Badge tone="green">acknowledged {shortDate(disclosure.acknowledged_at)}</Badge>
             ) : (
-              !decision && (
+              !decision &&
+              canDecide && (
                 <Button
                   variant="secondary"
                   disabled={busy}
@@ -104,6 +108,8 @@ export function DecisionPanel({
             )}
             <p className="text-slate-600">“{decision.reason}”</p>
           </div>
+        ) : !canDecide ? (
+          <p className="text-sm text-slate-500">Waiting for the lender&apos;s decision.</p>
         ) : (
           <div className="space-y-3">
             <div className="flex gap-2">

@@ -47,6 +47,7 @@ from ledger_lens.shared.pii import pseudonym
 from ledger_lens.shared.safety import build_safety_screen
 from ledger_lens.shared.schemas import (
     Applicant,
+    AuditReview,
     CaseStatus,
     ComplianceReport,
     Consent,
@@ -63,6 +64,7 @@ from ledger_lens.shared.schemas import (
 from ledger_lens.shared.storage import (
     BlobStore,
     CaseRepository,
+    OrgField,
     build_blob_store,
     build_case_repository,
 )
@@ -145,9 +147,16 @@ class Coordinator:
         consent: Consent,
         jurisdiction: str,
         actor: str,
+        lender_org_id: str | None = None,
+        business_org_id: str | None = None,
     ) -> CreditFile:
         case = CreditFile(
-            jurisdiction=jurisdiction.lower(), applicant=applicant, loan=loan, consent=consent
+            jurisdiction=jurisdiction.lower(),
+            applicant=applicant,
+            loan=loan,
+            consent=consent,
+            lender_org_id=lender_org_id,
+            business_org_id=business_org_id,
         )
         with self._context(case):
             self._s.cases.save(case)
@@ -160,6 +169,8 @@ class Coordinator:
                     "jurisdiction": case.jurisdiction,
                     "amount": str(loan.amount),
                     "currency": loan.currency,
+                    "lender": lender_org_id,
+                    "business": business_org_id,
                 },
             )
             self._record(
@@ -178,6 +189,55 @@ class Coordinator:
 
     def list_cases(self, limit: int = 50) -> list[CreditFile]:
         return self._s.cases.list(limit)
+
+    def list_cases_for(
+        self, field: OrgField, org_ids: set[str], limit: int = 50
+    ) -> list[CreditFile]:
+        return self._s.cases.list_for(field, org_ids, limit) if org_ids else []
+
+    def send_application(self, case_id: str, lender_org_id: str, actor: str) -> CreditFile:
+        """The owner sends their application to a lender, which from then on works it."""
+        with self._case(case_id) as case:
+            if case.business_org_id is None or case.lender_org_id is not None:
+                raise CaseStateError("the application has already been sent")
+            case.lender_org_id = lender_org_id
+            self._save(case, "application_sent", actor, {"lender": lender_org_id})
+            return case
+
+    def record_review(
+        self,
+        case_id: str,
+        *,
+        org_id: str,
+        reviewer: str,
+        outcome: Literal["no_issues", "issues_found"],
+        note: str,
+    ) -> CreditFile:
+        """An audit firm's review, pinned to the case as it was when reviewed."""
+        with self._case(case_id) as case:
+            note = note.strip()
+            if not note:
+                raise CaseStateError("a note is required for every review")
+            review = AuditReview(
+                org_id=org_id,
+                reviewer=reviewer,
+                outcome=outcome,
+                note=note,
+                snapshot=snapshot_hash(case),
+            )
+            case.reviews.append(review)
+            self._save(
+                case,
+                "audit_review_recorded",
+                reviewer,
+                {
+                    "audit_firm": org_id,
+                    "outcome": outcome,
+                    "snapshot": review.snapshot,
+                    "note_sha256": sha256_hex(note.encode()),
+                },
+            )
+            return case
 
     def add_evidence(
         self,

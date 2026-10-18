@@ -50,6 +50,8 @@ export interface WeekTotal {
 export interface CashFlowSummary {
   currency: string;
   weeks: WeekTotal[];
+  total_sales: number;
+  total_expenses: number;
   avg_weekly_sales: number;
   avg_weekly_net: number;
   sales_volatility: number;
@@ -175,6 +177,9 @@ export interface CreditFile {
   explanation: Explanation | null;
   disclosure: Disclosure | null;
   decision: OfficerDecision | null;
+  lender_org_id: string | null;
+  business_org_id: string | null;
+  reviews: AuditReview[];
 }
 
 export interface CaseSummary {
@@ -187,6 +192,8 @@ export interface CaseSummary {
   grade: string | null;
   recommendation: string | null;
   created_at: string;
+  lender_org_id: string | null;
+  business_org_id: string | null;
 }
 
 export interface Jurisdiction {
@@ -206,4 +213,53 @@ export interface AuditEvent {
 export interface AuditLog {
   verification: { valid: boolean; events: number; error: string | null };
   events: AuditEvent[];
+}
+
+export type OrgType = "platform" | "lender" | "audit_firm" | "business";
+export type Role = "platform_admin" | "admin" | "officer" | "auditor" | "owner";
+
+export interface Organisation {
+  id: string;
+  name: string;
+  type: OrgType;
+  jurisdiction: string | null;
+}
+
+export interface Me {
+  uid: string;
+  email: string;
+  name: string;
+  org: Organisation | null;
+  role: Role | null;
+  organisations_enabled: boolean;
+}
+
+export interface Member {
+  uid: string;
+  email: string;
+  display_name: string;
+  org_id: string;
+  role: Role;
+  disabled: boolean;
+}
+
+export interface AccessGrant {
+  id: string;
+  grantor_org_id: string;
+  grantee_org_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_at: string | null;
+  grantor_name: string;
+  grantee_name: string;
+}
+
+export interface AuditReview {
+  id: string;
+  org_id: string;
+  reviewer: string;
+  outcome: "no_issues" | "issues_found";
+  note: string;
+  snapshot: string;
+  reviewed_at: string;
 }

@@ -79,3 +79,31 @@ export const gradeTone = (grade: string | null): Tone =>
 
 export const recommendationTone = (value: string | null): Tone =>
   value === "approve" ? "green" : value === "refer" ? "amber" : value ? "red" : "slate";
+
+/** A labelled text input. */
+export function Field({
+  label,
+  name,
+  type = "text",
+  required = true,
+  ...rest
+}: {
+  label: string;
+  name: string;
+  type?: string;
+  required?: boolean;
+  [key: string]: unknown;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-slate-600">{label}</span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+        {...rest}
+      />
+    </label>
+  );
+}
