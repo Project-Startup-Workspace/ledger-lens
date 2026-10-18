@@ -5,6 +5,8 @@ exactly the same logic. Every state change is saved and appended to the audit ch
 """
 
 import contextvars
+import hashlib
+import logging
 import threading
 import weakref
 from collections.abc import Callable, Iterator
@@ -64,8 +66,10 @@ from ledger_lens.shared.storage import (
     build_blob_store,
     build_case_repository,
 )
+from ledger_lens.shared.usage import metered
 
 SYSTEM = "system"
+log = logging.getLogger(__name__)
 READ_WORKERS = 4  # concurrent model calls per assessment
 
 
@@ -96,7 +100,7 @@ class Services:
 
 
 def build_services(settings: Settings) -> Services:
-    llm = build_llm(settings)
+    llm = metered(build_llm(settings), settings)
     safety = build_safety_screen(settings)
     model = LogisticModel.load(settings.risk_model_path)
     fingerprint = artifact_fingerprint(settings.risk_model_path)
@@ -410,9 +414,24 @@ class Coordinator:
         case = self.get(case_id)
         if case.explanation is None:
             raise CaseStateError("write an explanation first")
-        return self._s.explain.speak(
-            case.explanation.borrower_text, case.explanation.borrower_language
-        )
+        text, language = case.explanation.borrower_text, case.explanation.borrower_language
+        # Audio is saved beside the evidence, so playing it again costs no model call. The
+        # key covers everything that changes the sound, so a new explanation is spoken anew.
+        settings = self._s.settings
+        voice = "\n".join([settings.model_tts, settings.tts_voice, language, text])
+        key = f"speech/{case_id}/{hashlib.sha256(voice.encode()).hexdigest()[:32]}.wav"
+        # One request per audio file speaks at a time, so a double press pays once. The key
+        # is not a case id, so the case itself stays unlocked while speech is generated.
+        with self._lock_for(key):
+            if (audio := self._s.blobs.find(key)) is not None:
+                return audio
+            audio = self._s.explain.speak(text, language)
+            try:
+                self._s.blobs.put(key, audio, "audio/wav")
+            except Exception:
+                # The audio is paid for; serve it and let the next play try saving again.
+                log.warning("could not save spoken explanation", exc_info=True)
+            return audio
 
     def acknowledge_disclosure(
         self, case_id: str, *, blank_fields: list[str], actor: str

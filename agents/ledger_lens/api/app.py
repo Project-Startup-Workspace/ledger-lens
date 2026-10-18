@@ -58,6 +58,7 @@ from ledger_lens.shared.schemas import (
     Explanation,
 )
 from ledger_lens.shared.storage import ConcurrentUpdateError
+from ledger_lens.shared.usage import ModelBudgetExceededError
 
 log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
@@ -344,6 +345,7 @@ def _register_errors(app: FastAPI) -> None:
         ConcurrentUpdateError: 409,
         UnsupportedLanguageError: 422,
         InvalidJurisdictionError: 422,
+        ModelBudgetExceededError: 429,  # matched before its parent LlmUnavailableError
         LlmUnavailableError: 503,
         LlmError: 502,
     }

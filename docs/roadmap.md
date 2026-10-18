@@ -49,6 +49,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [ ] | RAG Engine corpus with regulator PDFs | Project, PDFs |
 | [ ] | Model Armor template on agent traffic | Project |
 | [ ] | Deploy API, web and A2A to Cloud Run (`dev`), agents to Agent Runtime | All of the above |
+| [x] | Cost limits: instance caps, a shared daily Gemini call budget, saved speech | #22 |
 | [ ] | `demo` environment promoted and frozen (Sat 17) | Deployed `dev` |
 
 ## Phase 3: submission (Sat 17 – Sun 18 October 2026)
@@ -71,3 +72,4 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | 2026-10-12 | Live voice interview deferred | Playbook cut line; needs credentials to test |
 | 2026-10-13 | Full-codebase review before release: 29 findings fixed; Firestore and Storage tested against emulators in CI | Release gate for `main` |
 | 2026-10-18 | Reasoning model defaults to `gemini-3.1-pro-preview` | `gemini-3.1-pro` returns 404 on Vertex for this project |
+| 2026-10-18 | Daily cap on Gemini calls (300 by default) and Cloud Run instance caps before the first deploy | Bound the bill if a sign-in leaks or a script runs away |
