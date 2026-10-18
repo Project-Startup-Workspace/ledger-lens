@@ -96,13 +96,18 @@ export function CaseWorkspace() {
         <ConsistencyPanel report={credit.consistency} currency={credit.loan.currency} />
       )}
       {credit.risk && <RiskPanel risk={credit.risk} />}
-      {/* Keyed by revision: a saved change to the case resets these panels' local state. */}
+      {/* Keyed by revision, so a saved change resets their local state; each key is distinct,
+          or React would mistake one panel for another and render it twice. */}
       {credit.compliance && (
-        <CompliancePanel key={credit.revision} caseId={id} initial={credit.compliance} />
+        <CompliancePanel
+          key={`compliance-${credit.revision}`}
+          caseId={id}
+          initial={credit.compliance}
+        />
       )}
       {credit.explanation && (
         <ExplanationPanel
-          key={credit.revision}
+          key={`explanation-${credit.revision}`}
           caseId={id}
           initial={credit.explanation}
           canChange={can.explain}
@@ -111,7 +116,7 @@ export function CaseWorkspace() {
       <CreditReviewPanel credit={credit} canAssign={can.assignReviewer} busy={busy} run={run} />
       {assessed && (
         <DecisionPanel
-          key={credit.revision}
+          key={`decision-${credit.revision}`}
           credit={credit}
           busy={busy}
           run={run}
