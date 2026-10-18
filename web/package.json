@@ -12,6 +12,8 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@firebase/app": "^0.16.2",
+    "@firebase/auth": "^1.13.6",
     "jose": "^6.2.12",
     "next": "16.4.0",
     "react": "19.3.0",

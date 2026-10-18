@@ -29,3 +29,27 @@ export function title(slug: string): string {
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+const ORG_LABELS = {
+  platform: "platform",
+  lender: "lender",
+  audit_firm: "audit firm",
+  business: "business",
+} as const;
+
+export const orgLabel = (type: keyof typeof ORG_LABELS): string => ORG_LABELS[type];
+
+const ROLE_LABELS: Record<string, string> = {
+  platform_admin: "platform admin",
+  admin: "organisation admin",
+  loan_officer: "loan officer",
+  credit_reviewer: "credit reviewer",
+  audit_officer: "audit officer",
+  audit_reviewer: "audit reviewer",
+  owner: "owner",
+  accountant: "accountant",
+};
+
+export function roleLabel(role: string | null): string {
+  return role ? (ROLE_LABELS[role] ?? role) : "no role yet";
+}

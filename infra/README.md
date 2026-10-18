@@ -47,7 +47,19 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
    done
    ```
 
-4. Create the web sign-in users (one `name:password` per officer, comma separated):
+4. Sign-in. With Firebase Authentication (the default once `FIREBASE_API_KEY` is set), run `infra/gcp/firebase-auth.sh <project-id>` (bootstrap runs it too), set the `FIREBASE_API_KEY` variable it prints, then create the platform admin and the default lender, which keeps the cases created before organisations:
+
+   ```bash
+   cd agents
+   export LL_GCP_PROJECT=ledger-lens-dev LL_STORAGE_BACKEND=gcp LL_IDENTITY_BACKEND=gcp
+   uv run python -m ledger_lens.organisations platform-admin --email you@example.com
+   uv run python -m ledger_lens.organisations default-lender --name "Demo Microfinance"
+   uv run python -m ledger_lens.organisations add-member --org org_demo_lender --email officer@example.com --role loan_officer
+   ```
+
+   Each command asks for the new account's password. The platform admin then adds or approves lenders and audit firms in the app; their admins add their own staff; businesses sign up themselves. The commands use your Application Default Credentials (`gcloud auth application-default login`).
+
+   Without Firebase, create HTTP Basic sign-in users instead (one `name:password` per officer, comma separated):
 
    ```bash
    printf 'priya:CHANGE-ME,ravi:CHANGE-ME' | gcloud secrets create ll-web-users --data-file=- --project ledger-lens-dev

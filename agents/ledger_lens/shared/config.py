@@ -95,6 +95,12 @@ class Settings(BaseSettings):
     # apart from the web app's LL_IAP_AUDIENCE so a shared .env cannot switch it on.
     api_iap_audience: str | None = None
 
+    # Sign-in: gcp verifies Firebase Authentication ID tokens and applies each member's
+    # role. local keeps the single-lender sign-in above, where everyone is an officer of
+    # the default lender, which also owns cases created before organisations existed.
+    identity_backend: Backend = Backend.LOCAL
+    default_lender_org: str = "org_demo_lender"
+
     # Public address of the AuditPulse A2A service, written into its agent card
     a2a_public_url: str = "http://localhost:8081"
 

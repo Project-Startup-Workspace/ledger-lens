@@ -4,13 +4,15 @@
 import fcntl
 import json
 import re
+from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from ledger_lens.shared.config import Backend, Settings
 from ledger_lens.shared.schemas import CreditFile, utc_now
 
+OrgField = Literal["lender_org_id", "business_org_id"]
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./-]*$")
 
 
@@ -38,6 +40,12 @@ class CaseRepository(Protocol):
         ...
 
     def get(self, case_id: str) -> CreditFile | None: ...
+
+    def list_for(
+        self, field: OrgField, org_ids: Collection[str], limit: int = 50
+    ) -> list[CreditFile]:
+        """Cases whose `field` is one of `org_ids`, most recent update first."""
+        ...
 
     def list(self, limit: int = 50) -> list[CreditFile]:
         """Cases ordered by most recent update."""
@@ -95,6 +103,12 @@ class LocalCaseRepository:
         if not path.exists():
             return None
         return CreditFile.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def list_for(
+        self, field: OrgField, org_ids: Collection[str], limit: int = 50
+    ) -> list[CreditFile]:
+        wanted = set(org_ids)
+        return [c for c in self.list(1_000_000) if getattr(c, field) in wanted][:limit]
 
     def list(self, limit: int = 50) -> list[CreditFile]:
         """Most recently updated first.
@@ -167,6 +181,23 @@ class FirestoreCaseRepository:
         snapshot = self._collection.document(check_key(case_id)).get()
         return _from_document(snapshot.to_dict()) if snapshot.exists else None
 
+    def list_for(
+        self, field: OrgField, org_ids: Collection[str], limit: int = 50
+    ) -> list[CreditFile]:
+        """Sorted here rather than by the query, so no composite index is needed; each
+        organisation's cases are read in full, which suits a pilot's volumes."""
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        ids = sorted(set(org_ids))
+        found: list[dict[str, Any]] = []
+        for start in range(0, len(ids), _IN_LIMIT):
+            query = self._collection.where(
+                filter=FieldFilter(field, "in", ids[start : start + _IN_LIMIT])
+            )
+            found.extend(doc.to_dict() or {} for doc in query.stream())
+        found.sort(key=lambda d: d[_ORDER_FIELD], reverse=True)  # every case carries it
+        return [_from_document(d) for d in found[:limit]]
+
     def list(self, limit: int = 50) -> list[CreditFile]:
         """Most recently updated first.
 
@@ -179,6 +210,7 @@ class FirestoreCaseRepository:
 
 
 _ORDER_FIELD = "_updated"  # storage-only; not part of the CreditFile contract
+_IN_LIMIT = 30  # values Firestore accepts in one "in" filter
 
 
 def _from_document(data: dict[str, Any] | None) -> CreditFile:

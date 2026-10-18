@@ -7,37 +7,14 @@ import { api } from "@/lib/api";
 import { LANGUAGES } from "@/lib/languages";
 import type { Jurisdiction } from "@/lib/types";
 
-import { Button, Card, ErrorNote } from "./ui";
-
-function Field({
-  label,
-  name,
-  type = "text",
-  required = true,
-  ...rest
-}: {
-  label: string;
-  name: string;
-  type?: string;
-  required?: boolean;
-  [key: string]: unknown;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="text-slate-600">{label}</span>
-      <input
-        name={name}
-        type={type}
-        required={required}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-        {...rest}
-      />
-    </label>
-  );
-}
+import { useSession } from "./auth-provider";
+import { Button, Card, ErrorNote, Field } from "./ui";
 
 export function NewCaseForm() {
   const router = useRouter();
+  const { me } = useSession();
+  // An owner applies for themselves: their own consent, their business's name.
+  const owner = me?.org?.type === "business";
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
@@ -86,13 +63,17 @@ export function NewCaseForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Card title="Applicant">
+      <Card title={owner ? "About you and your business" : "Applicant"}>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Full name" name="full_name" />
           <Field label="Date of birth" name="date_of_birth" type="date" />
           <Field label="National ID" name="national_id" />
           <Field label="Phone" name="phone" type="tel" />
-          <Field label="Business name" name="business_name" />
+          <Field
+            label="Business name"
+            name="business_name"
+            defaultValue={owner ? me?.org?.name : undefined}
+          />
           <Field label="Business type" name="business_type" placeholder="grocery shop" />
           <Field
             label="Years in business"
@@ -149,13 +130,14 @@ export function NewCaseForm() {
       <label className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
         <input type="checkbox" name="consent" required className="mt-1" />
         <span>
-          The applicant has agreed that their notebook and statements may be read to assess this
-          loan.
+          {owner
+            ? "I agree that my notebook and statements may be read to assess this loan. Nothing is shared until I send it to a lender."
+            : "The applicant has agreed that their notebook and statements may be read to assess this loan."}
         </span>
       </label>
       <ErrorNote message={error} />
       <Button type="submit" disabled={saving}>
-        {saving ? "Creating…" : "Create case"}
+        {saving ? "Creating…" : owner ? "Start application" : "Create case"}
       </Button>
     </form>
   );

@@ -20,7 +20,8 @@ export function EvidencePanel({
 }: {
   credit: CreditFile;
   busy: boolean;
-  onUpload: (kind: string, file: File) => void;
+  /** Absent when this person may not add evidence. */
+  onUpload?: (kind: string, file: File) => void;
 }) {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function EvidencePanel({
 
   return (
     <Card title={`Evidence (${credit.evidence.length})`}>
-      {!closed && (
+      {!closed && onUpload && (
         <div className="mb-3 flex flex-wrap gap-2">
           <UploadButton
             label="Photograph notebook page"

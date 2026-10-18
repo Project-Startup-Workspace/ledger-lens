@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 # Google Cloud backends; local mode runs without them.
 gcp = [
+  "firebase-admin>=7.1",
   "google-auth[requests]>=2.38",
   "google-cloud-bigquery>=3.30",
   "google-cloud-firestore>=2.20",

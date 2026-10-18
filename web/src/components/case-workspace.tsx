@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { permissions } from "@/lib/permissions";
 import { money } from "@/lib/format";
 import type { CreditFile } from "@/lib/types";
 
@@ -13,12 +14,18 @@ import { ConsistencyPanel } from "./consistency-panel";
 import { DecisionPanel } from "./decision-panel";
 import { EvidencePanel } from "./evidence-panel";
 import { ExplanationPanel } from "./explanation-panel";
+import { useSession } from "./auth-provider";
+import { CreditReviewPanel } from "./credit-review-panel";
+import { EngagementPanel } from "./engagement-panel";
+import { RequestsPanel } from "./requests-panel";
 import { RiskPanel } from "./risk-panel";
+import { SharingPanel } from "./sharing-panel";
 import { Badge, Button, ErrorNote } from "./ui";
 
 /** One case, top to bottom in the order an officer works: evidence, checks, decision. */
 export function CaseWorkspace() {
   const { id } = useParams<{ id: string }>();
+  const { me } = useSession();
   const [credit, setCredit] = useState<CreditFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +59,7 @@ export function CaseWorkspace() {
     );
 
   const assessed = credit.status !== "draft";
+  const can = permissions(me, credit);
   return (
     <div className="space-y-4">
       <div>
@@ -65,12 +73,15 @@ export function CaseWorkspace() {
         </p>
       </div>
       <ErrorNote message={error} />
+      {credit.business_org_id && (
+        <SharingPanel credit={credit} canSend={can.send} busy={busy} run={run} />
+      )}
       <EvidencePanel
         credit={credit}
         busy={busy}
-        onUpload={(kind, file) => run(() => api.upload(id, kind, file))}
+        onUpload={can.upload ? (kind, file) => run(() => api.upload(id, kind, file)) : undefined}
       />
-      {credit.status !== "decided" && (
+      {can.prepare && (
         <Button
           disabled={busy || credit.evidence.length === 0}
           onClick={() => run(() => api.assess(id))}
@@ -90,9 +101,32 @@ export function CaseWorkspace() {
         <CompliancePanel key={credit.revision} caseId={id} initial={credit.compliance} />
       )}
       {credit.explanation && (
-        <ExplanationPanel key={credit.revision} caseId={id} initial={credit.explanation} />
+        <ExplanationPanel
+          key={credit.revision}
+          caseId={id}
+          initial={credit.explanation}
+          canChange={can.explain}
+        />
       )}
-      {assessed && <DecisionPanel key={credit.revision} credit={credit} busy={busy} run={run} />}
+      <CreditReviewPanel credit={credit} canAssign={can.assignReviewer} busy={busy} run={run} />
+      {assessed && (
+        <DecisionPanel
+          key={credit.revision}
+          credit={credit}
+          busy={busy}
+          run={run}
+          canDecide={can.decide}
+          canAcknowledge={can.acknowledge}
+        />
+      )}
+      <RequestsPanel
+        credit={credit}
+        askTo={can.askTo}
+        answerAs={can.answerAs}
+        busy={busy}
+        run={run}
+      />
+      <EngagementPanel credit={credit} can={can} busy={busy} run={run} />
     </div>
   );
 }
