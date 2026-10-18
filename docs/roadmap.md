@@ -31,7 +31,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [x] | 18 | Explanation agent: officer report, borrower explanation | P0 | #8 |
 | [x] | 19 | Spoken explanation with Gemini TTS | P1 | #8; verified live on Vertex (#21). Device voice used offline |
 | [ ] | 20 | Live voice interview | P2 | Cut until after submission (playbook cut line) |
-| [~] | 21 | Full flow on every demo case | P0 | Works locally on all 3 cases; deployed URL pending |
+| [x] | 21 | Full flow on every demo case | P0 | Works locally on all 3 cases; live on Cloud Run (#16) |
 | [~] | 22 | Final evaluation and bias check; results table | P0 | #12: bias check passes (0.97); accuracy on hand-written pages needs Gemini |
 | [x] | — | Containers, docker-compose, infra scripts, deploy and eval workflows | P0 | #12, #13 |
 | [x] | 25 | README, architecture doc, demo script | P1 | #14 |
@@ -48,7 +48,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [ ] | Train the risk model in BigQuery ML and export weights | Project |
 | [ ] | RAG Engine corpus with regulator PDFs | Project, PDFs |
 | [ ] | Model Armor template on agent traffic | Project |
-| [ ] | Deploy API, web and A2A to Cloud Run (`dev`), agents to Agent Runtime | All of the above |
+| [~] | Deploy API, web and A2A to Cloud Run (`dev`), agents to Agent Runtime | Cloud Run live from `main` (#16): Firestore, Cloud Storage, KMS-signed packs verified; Agent Runtime not deployed |
 | [x] | Cost limits: instance caps, a shared daily Gemini call budget, saved speech | #22 |
 | [ ] | `demo` environment promoted and frozen (Sat 17) | Deployed `dev` |
 
