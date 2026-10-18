@@ -1,6 +1,6 @@
-# Ledger Lens web (officer app)
+# Ledger Lens web
 
-Mobile-first Next.js app that loan officers use in the field: photograph notebook pages, see every figure boxed where it was read, review the fraud check, risk reasons and compliance checklist, play the borrower's explanation, and record the decision.
+Mobile-first Next.js app with a view for each role: business owners see insights and share their records, loan officers prepare applications, credit reviewers decide, audit firms record findings and approve reports, and the platform admin manages organisations. Every figure is boxed where it was read on the notebook page.
 
 ## Run
 
@@ -9,20 +9,23 @@ npm ci
 npm run dev        # http://localhost:3000 (expects the API on :8080: `make api`)
 ```
 
-| Variable          | Meaning                                                                                                     | Default                 |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `LL_API_URL`      | Ledger Lens API base URL                                                                                    | `http://localhost:8080` |
-| `LL_API_TOKEN`    | Bearer token for the API, if it requires one                                                                | unset                   |
-| `LL_IAP_AUDIENCE` | Behind Identity-Aware Proxy: the audience of IAP's signed assertion; the verified email becomes the officer | unset                   |
-| `LL_OFFICER_ID`   | Officer recorded on actions until sign-in exists                                                            | `officer`               |
+| Variable                                     | Meaning                                                             | Default                        |
+| -------------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| `LL_API_URL`                                 | Ledger Lens API base URL                                            | `http://localhost:8080`        |
+| `LL_API_TOKEN`                               | Bearer token for the API, if it requires one                        | unset                          |
+| `LL_FIREBASE_PROJECT`, `LL_FIREBASE_API_KEY` | Turn on Firebase sign-in; the browser reads them from `/api/config` | unset (no sign-in, one lender) |
+| `LL_FIREBASE_AUTH_DOMAIN`                    | Auth domain, if not `<project>.firebaseapp.com`                     | unset                          |
+| `FIREBASE_AUTH_EMULATOR_HOST`                | Use the Firebase Auth emulator (tests only)                         | unset                          |
+| `LL_WEB_USERS`, `LL_IAP_AUDIENCE`            | Alternatives to Firebase: HTTP Basic users, or Identity-Aware Proxy | unset                          |
+| `LL_OFFICER_ID`                              | Name recorded on actions when no sign-in is used                    | `officer`                      |
 
-These are server-only: the browser calls `/api/ll/*`, a route handler that forwards to the API and adds the token and officer id (`src/app/api/ll/[...path]/route.ts`).
+These are server-only: the browser calls `/api/ll/*`, a route handler that forwards to the API with the token and the signed-in person's ID token (`src/app/api/ll/[...path]/route.ts`).
 
 ## Structure
 
-- `src/app`: routes (home, new case, case workspace) and the API proxy
-- `src/components`: one panel per agent (evidence, cash flow, consistency, risk, compliance, explanation, decision and audit)
-- `src/lib`: typed API client and types mirroring the Python contracts
+- `src/app`: routes (home per role, sign-in and sign-up, team, new case, case workspace) and the API proxy
+- `src/components`: one panel per agent (evidence, cash flow, consistency, risk, compliance, explanation, decision and audit), plus sharing, requests, credit review and audit engagement
+- `src/lib`: typed API client, types mirroring the Python contracts, and permissions mirroring `agents/ledger_lens/access.py`
 
 ## Checks
 
