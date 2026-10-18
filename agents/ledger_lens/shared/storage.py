@@ -23,6 +23,10 @@ class BlobStore(Protocol):
 
     def get(self, key: str) -> bytes: ...
 
+    def find(self, key: str) -> bytes | None:
+        """Like get, but None when nothing is stored under `key`."""
+        ...
+
 
 class CaseRepository(Protocol):
     def save(self, case: CreditFile) -> None:
@@ -58,6 +62,10 @@ class LocalBlobStore:
 
     def get(self, key: str) -> bytes:
         return (self._root / check_key(key)).read_bytes()
+
+    def find(self, key: str) -> bytes | None:
+        path = self._root / check_key(key)
+        return path.read_bytes() if path.exists() else None
 
 
 class LocalCaseRepository:
@@ -117,6 +125,14 @@ class GcsBlobStore:
 
     def get(self, key: str) -> bytes:
         return bytes(self._bucket.blob(check_key(key)).download_as_bytes())
+
+    def find(self, key: str) -> bytes | None:
+        from google.api_core.exceptions import NotFound
+
+        try:
+            return self.get(key)
+        except NotFound:
+            return None
 
 
 class FirestoreCaseRepository:

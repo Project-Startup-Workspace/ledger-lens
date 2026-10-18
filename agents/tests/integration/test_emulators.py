@@ -6,6 +6,7 @@ Start them with `make emulators` (Docker). Skipped when they are not running.
 import os
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 import pytest
@@ -110,3 +111,33 @@ def test_gcs_blob_store_round_trip() -> None:
     assert store.get("case_1/ev_1") == b"\x89PNG data"
     with pytest.raises(ValueError):
         store.put("../escape", b"x", "text/plain")
+    assert store.find("case_1/ev_1") == b"\x89PNG data"
+    assert store.find("case_1/missing") is None
+
+
+@needs_firestore
+def test_firestore_call_budget_is_shared_and_never_overspent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ledger_lens.shared import usage
+    from ledger_lens.shared.usage import FirestoreCallBudget, ModelBudgetExceededError
+
+    # A unique day keeps this run's counter apart from earlier runs on the same emulator.
+    day = f"test-{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(usage, "_today", lambda: day)
+    budgets = [FirestoreCallBudget(PROJECT, limit=8), FirestoreCallBudget(PROJECT, limit=8)]
+
+    def take(i: int) -> bool:
+        try:
+            budgets[i % 2].take()
+            return True
+        except ModelBudgetExceededError:
+            return False
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        granted = list(pool.map(take, range(20)))
+    assert 0 < granted.count(True) <= 8  # contention may refuse early; never overspends
+
+    # Without contention the whole allowance is usable.
+    monkeypatch.setattr(usage, "_today", lambda: f"{day}-quiet")
+    assert [take(i) for i in range(10)] == [True] * 8 + [False] * 2

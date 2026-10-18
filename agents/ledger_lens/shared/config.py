@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     tts_voice: str = "Kore"
     llm_timeout_s: float = 90.0
     llm_retries: int = Field(default=1, ge=0)
+    # Paid model calls allowed per UTC day across all instances; 0 means no cap.
+    daily_model_calls: int = Field(default=300, ge=0)
 
     # Backends for storage, safety screening and regulation retrieval
     storage_backend: Backend = Backend.LOCAL
