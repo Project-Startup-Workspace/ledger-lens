@@ -60,9 +60,32 @@ export function ExplanationPanel({ caseId, initial }: { caseId: string; initial:
           Standard English summary: written explanations and translation need Gemini.
         </p>
       )}
-      <p className="whitespace-pre-line text-sm leading-relaxed">
-        {busy ? "Writing…" : explanation.borrower_text}
-      </p>
+      {busy ? (
+        <p className="text-sm text-slate-500">Writing…</p>
+      ) : explanation.english_text ? (
+        // Side by side, so an officer who cannot read the borrower's language can check it.
+        <div className="grid gap-4 md:grid-cols-2">
+          <section>
+            <h3 className="mb-1 text-xs font-medium uppercase text-slate-500">
+              {LANGUAGES[explanation.borrower_language] ?? explanation.borrower_language}, for the
+              borrower
+            </h3>
+            <p className="whitespace-pre-line text-sm leading-relaxed">
+              {explanation.borrower_text}
+            </p>
+          </section>
+          <section className="rounded-lg bg-slate-50 p-3">
+            <h3 className="mb-1 text-xs font-medium uppercase text-slate-500">
+              English, for the officer
+            </h3>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
+              {explanation.english_text}
+            </p>
+          </section>
+        </div>
+      ) : (
+        <p className="whitespace-pre-line text-sm leading-relaxed">{explanation.borrower_text}</p>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {explanation.audio_available ? (
           // Keyed and versioned by language so a translation reloads the audio, and

@@ -4,8 +4,10 @@ The officer report is assembled from the current case on demand, so it never goe
 stale and never contains anything the agents did not produce. Only the borrower text
 is written by Gemini, from a short list of checked facts. Its output is screened and
 every number in it must appear in those facts; otherwise the English template is used.
+Model text is kept per language and reused while the facts are unchanged.
 """
 
+import hashlib
 import logging
 import re
 
@@ -49,17 +51,34 @@ class ExplainAgent:
         self._can_speak = settings.enable_tts and settings.llm_provider is not LlmProvider.OFFLINE
 
     def explain(self, case: CreditFile, language: str | None = None) -> Explanation:
-        """Write the borrower explanation; `language` defaults to the applicant's own."""
+        """Write the borrower explanation; `language` defaults to the applicant's own.
+
+        A translation already written from the same facts is returned without a model call.
+        """
         target = normalise_language(language or case.applicant.preferred_language)
         facts = borrower_facts(case)
-        text, written_by = self._borrower_text(target, facts)
+        digest = self._digest(facts)
+        saved = case.translations.get(target)
+        if saved is not None and saved.facts_digest == digest:
+            # Speech can be switched on or off after the text was written.
+            return saved.model_copy(update={"audio_available": self._audible(target)})
+        text, english, written_by = self._borrower_text(target, facts)
         actual = target if written_by != TEMPLATE else "en"
         return Explanation(
             borrower_text=text,
             borrower_language=actual,
-            audio_available=self._can_speak and actual in prompts.TTS_LOCALES,
+            english_text=english,
+            audio_available=self._audible(actual),
             written_by=written_by,
+            facts_digest=digest,
         )
+
+    def _audible(self, language: str) -> bool:
+        return self._can_speak and language in prompts.TTS_LOCALES
+
+    def _digest(self, facts: list[str]) -> str:
+        source = [self._settings.model_reason, prompts.PROMPT_VERSION, *facts]
+        return hashlib.sha256("\n".join(source).encode()).hexdigest()[:32]
 
     def speak(self, text: str, language: str) -> bytes:
         """WAV audio of the borrower explanation, for reading it aloud."""
@@ -68,7 +87,8 @@ class ExplainAgent:
             raise LlmUnavailableError(f"speech is not available for '{language}'")
         return self._llm.speak(text=text, language=locale)
 
-    def _borrower_text(self, language: str, facts: list[str]) -> tuple[str, str]:
+    def _borrower_text(self, language: str, facts: list[str]) -> tuple[str, str | None, str]:
+        """(text, English version or None, written_by)."""
         try:
             wire = self._llm.generate(
                 task="explain_borrower",
@@ -80,15 +100,20 @@ class ExplainAgent:
         except ModelBudgetExceededError:
             raise  # the officer must learn the limit is reached, not get English silently
         except LlmUnavailableError:
-            return template_text(facts), TEMPLATE
+            return template_text(facts), None, TEMPLATE
         except LlmError:
             log.warning("borrower explanation failed; using the English template", exc_info=True)
-            return template_text(facts), TEMPLATE
+            return template_text(facts), None, TEMPLATE
         text = wire.borrower_text.strip()
-        if problem := self._reject_reason(text, facts):
+        # The officer trusts the English version, so it is checked as strictly as the text.
+        english = wire.english_text.strip() if language != "en" else ""
+        problem = self._reject_reason(text, facts) or (
+            english and self._reject_reason(english, facts)
+        )
+        if problem:
             log.warning("borrower explanation rejected", extra={"reason": problem})
-            return template_text(facts), TEMPLATE
-        return text, f"{self._settings.model_reason}/{prompts.PROMPT_VERSION}"
+            return template_text(facts), None, TEMPLATE
+        return text, english or None, f"{self._settings.model_reason}/{prompts.PROMPT_VERSION}"
 
     def _reject_reason(self, text: str, facts: list[str]) -> str | None:
         """Why model text must not reach the borrower, or None when it is acceptable."""

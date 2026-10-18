@@ -10,6 +10,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const OFFICER_HEADER = "x-ll-officer";
+// Signed-in pages must never sit in a shared cache such as the Firebase Hosting CDN,
+// which would otherwise keep prerendered pages and serve them without sign-in.
+const PRIVATE = "private, no-store";
 const IAP_JWT_HEADER = "x-goog-iap-jwt-assertion";
 const IAP_KEYS = createRemoteJWKSet(new URL("https://www.gstatic.com/iap/verify/public_key-jwk"));
 
@@ -56,9 +59,14 @@ export async function proxy(request: NextRequest) {
   // assertion is the only identity, whatever else is configured.
   if (process.env.LL_IAP_AUDIENCE) {
     const officer = await iapOfficer(request, process.env.LL_IAP_AUDIENCE);
-    if (!officer) return new NextResponse("Identity-Aware Proxy sign-in required", { status: 401 });
+    if (!officer) {
+      return new NextResponse("Identity-Aware Proxy sign-in required", {
+        status: 401,
+        headers: { "cache-control": PRIVATE },
+      });
+    }
     headers.set(OFFICER_HEADER, officer);
-    return NextResponse.next({ request: { headers } });
+    return signedIn(headers);
   }
 
   const known = users();
@@ -75,12 +83,22 @@ export async function proxy(request: NextRequest) {
     if (expected === undefined || !safeEqual(password, expected)) {
       return new NextResponse("Sign-in required", {
         status: 401,
-        headers: { "www-authenticate": 'Basic realm="Ledger Lens", charset="UTF-8"' },
+        headers: {
+          "www-authenticate": 'Basic realm="Ledger Lens", charset="UTF-8"',
+          "cache-control": PRIVATE,
+        },
       });
     }
     headers.set(OFFICER_HEADER, name);
+    return signedIn(headers);
   }
   return NextResponse.next({ request: { headers } });
+}
+
+function signedIn(headers: Headers): NextResponse {
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("cache-control", PRIVATE);
+  return response;
 }
 
 export const config = {

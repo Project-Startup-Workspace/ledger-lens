@@ -35,7 +35,7 @@ from ledger_lens.auditpulse.screening import SanctionsScreen
 from ledger_lens.consistency.agent import ConsistencyAgent
 from ledger_lens.evidence.agent import EvidenceAgent
 from ledger_lens.evidence.tools import weekly_cash_flow
-from ledger_lens.explain.agent import ExplainAgent, officer_report
+from ledger_lens.explain.agent import TEMPLATE, ExplainAgent, officer_report
 from ledger_lens.risk.agent import RiskAgent
 from ledger_lens.risk.model import LogisticModel
 from ledger_lens.risk.model_card import model_card
@@ -376,16 +376,23 @@ class Coordinator:
     def write_explanation(
         self, case: CreditFile, actor: str = SYSTEM, language: str | None = None
     ) -> None:
-        """Agent 5."""
-        case.explanation = self._s.explain.explain(case, language)
+        """Agent 5. Translations of older facts are dropped; the template is never kept,
+        so the next request can try the model again."""
+        explanation = self._s.explain.explain(case, language)
+        language = explanation.borrower_language
+        reused = case.translations.get(language) == explanation
+        case.explanation = explanation
+        if explanation.written_by != TEMPLATE:
+            case.translations = {
+                code: kept
+                for code, kept in case.translations.items()
+                if kept.facts_digest == explanation.facts_digest
+            } | {language: explanation}
         self._save(
             case,
             "explanation_written",
             actor,
-            {
-                "language": case.explanation.borrower_language,
-                "written_by": case.explanation.written_by,
-            },
+            {"language": language, "written_by": explanation.written_by, "reused": reused},
         )
 
     # --- Officer actions --------------------------------------------------------------
