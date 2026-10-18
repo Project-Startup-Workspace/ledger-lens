@@ -1,0 +1,106 @@
+{
+  "image": "notebook-p2.png",
+  "script": "Latin",
+  "entries": [
+    {
+      "date": "2026-08-27",
+      "amount": 1736000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-28",
+      "amount": 1304000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-28",
+      "amount": 4149000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-08-29",
+      "amount": 1798000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-08-31",
+      "amount": 1513000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 1753000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 4071000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-01",
+      "amount": 1500000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-02",
+      "amount": 1156000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-03",
+      "amount": 1378000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-04",
+      "amount": 1222000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-04",
+      "amount": 3407000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-05",
+      "amount": 1446000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-05",
+      "amount": 450000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-06",
+      "amount": 1385000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-07",
+      "amount": 1869000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-08",
+      "amount": 1657000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-08",
+      "amount": 4040000,
+      "direction": "out"
+    },
+    {
+      "date": "2026-09-09",
+      "amount": 1291000,
+      "direction": "in"
+    },
+    {
+      "date": "2026-09-10",
+      "amount": 1674000,
+      "direction": "in"
+    }
+  ]
+}

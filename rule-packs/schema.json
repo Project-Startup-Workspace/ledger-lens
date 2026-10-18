@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerlens.ai/schemas/rule-pack.json",
+  "title": "Ledger Lens rule pack",
+  "description": "Versioned lending rules for one jurisdiction. Rules are data; the engine in agents/ledger_lens/auditpulse runs them.",
+  "type": "object",
+  "required": [
+    "jurisdiction",
+    "name",
+    "version",
+    "last_checked",
+    "review_status",
+    "sources",
+    "rules"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jurisdiction": {
+      "type": "string",
+      "pattern": "^([a-z]{2}|common)$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d{4}\\.\\d{2}\\.\\d+$"
+    },
+    "last_checked": {
+      "type": "string",
+      "format": "date"
+    },
+    "review_status": {
+      "enum": [
+        "draft",
+        "counsel_reviewed"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "clauses"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "clauses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "reference",
+                "summary"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "Section or paragraph as cited; 'to be confirmed' until counsel checks it."
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "Plain-language summary, not a quotation."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "stage",
+          "check",
+          "on_fail",
+          "pass_detail",
+          "fail_detail",
+          "cites"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z]{2,6}-[A-Z]{2,6}-\\d{2}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "minor",
+              "major",
+              "critical"
+            ]
+          },
+          "stage": {
+            "enum": [
+              "pre_decision",
+              "post_decision"
+            ],
+            "description": "post_decision rules stay pending until the officer decides."
+          },
+          "check": {
+            "$ref": "#/$defs/check"
+          },
+          "on_fail": {
+            "enum": [
+              "fail",
+              "review"
+            ],
+            "description": "review sends the case to a human; it never rejects automatically."
+          },
+          "pass_detail": {
+            "type": "string"
+          },
+          "fail_detail": {
+            "type": "string"
+          },
+          "cites": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "clause"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "clause": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "outcomes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "approve",
+                "decline",
+                "refer"
+              ]
+            },
+            "description": "Decisions a post_decision rule applies to; others make it not_applicable. Defaults to all."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/check"
+              },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "fact",
+            "op"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "fact": {
+              "type": "string",
+              "description": "Dotted path into the facts built from the case."
+            },
+            "op": {
+              "enum": [
+                "present",
+                "true",
+                "false",
+                "empty",
+                "not_empty",
+                "eq",
+                "gte",
+                "lte",
+                "lt",
+                "in"
+              ]
+            },
+            "value": {}
+          }
+        }
+      ]
+    }
+  }
+}

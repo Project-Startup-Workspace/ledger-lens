@@ -1,0 +1,131 @@
+{
+  "jurisdiction": "sg",
+  "name": "Singapore",
+  "version": "2026.10.2",
+  "last_checked": "2026-10-12",
+  "review_status": "draft",
+  "sources": [
+    {
+      "id": "mas-airm-2026",
+      "title": "MAS Guidelines on Artificial Intelligence Risk Management (issued 7 Oct 2026, effective 7 Oct 2027)",
+      "url": "https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions",
+      "clauses": [
+        {
+          "id": "human-oversight",
+          "reference": "Human oversight (paragraph to be confirmed against the final text)",
+          "summary": "AI used in material decisions such as credit should have appropriate human oversight, with accountable individuals for the outcome."
+        },
+        {
+          "id": "transparency",
+          "reference": "Transparency and explainability (paragraph to be confirmed against the final text)",
+          "summary": "Institutions should be able to explain AI-supported decisions to the people affected at a level suited to their materiality."
+        },
+        {
+          "id": "validation",
+          "reference": "Independent validation and inventory (paragraph to be confirmed against the final text)",
+          "summary": "Material AI models should be inventoried, versioned and validated before use, with validation records kept."
+        },
+        {
+          "id": "fairness",
+          "reference": "Fairness (paragraph to be confirmed against the final text)",
+          "summary": "Institutions should assess AI models for unintended bias against groups of customers and keep the results."
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "SG-HUM-01",
+      "title": "A named officer signed off the decision",
+      "severity": "critical",
+      "stage": "post_decision",
+      "check": {
+        "fact": "decision.officer_id",
+        "op": "present"
+      },
+      "on_fail": "fail",
+      "pass_detail": "The decision is signed off by a named officer.",
+      "fail_detail": "No officer is recorded against the decision.",
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "human-oversight"
+        }
+      ]
+    },
+    {
+      "id": "SG-EXP-01",
+      "title": "Reasons are given for the recommendation and the decision",
+      "severity": "major",
+      "stage": "post_decision",
+      "check": {
+        "all": [
+          {
+            "fact": "risk.reason_count",
+            "op": "gte",
+            "value": 1
+          },
+          {
+            "fact": "decision.reason",
+            "op": "present"
+          }
+        ]
+      },
+      "on_fail": "fail",
+      "pass_detail": "Model reason codes and the officer's own reason are on file.",
+      "fail_detail": "The decision lacks the model's reasons or the officer's reason.",
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "transparency"
+        }
+      ]
+    },
+    {
+      "id": "SG-VAL-01",
+      "title": "Model version and validation record attached",
+      "severity": "major",
+      "stage": "pre_decision",
+      "check": {
+        "all": [
+          {
+            "fact": "model.version",
+            "op": "present"
+          },
+          {
+            "fact": "model.validation_auc",
+            "op": "present"
+          }
+        ]
+      },
+      "on_fail": "fail",
+      "pass_detail": "The score names its model version, which has a validation record.",
+      "fail_detail": "The model version or its validation record is missing.",
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "validation"
+        }
+      ]
+    },
+    {
+      "id": "SG-BIA-01",
+      "title": "Passing bias test on file for the model version",
+      "severity": "major",
+      "stage": "pre_decision",
+      "check": {
+        "fact": "model.bias_report",
+        "op": "true"
+      },
+      "on_fail": "review",
+      "pass_detail": "A bias test run on this exact model version passed the four-fifths rule.",
+      "fail_detail": "No passing bias test is on file for this model version. Run `make eval` and review the result.",
+      "cites": [
+        {
+          "source": "mas-airm-2026",
+          "clause": "fairness"
+        }
+      ]
+    }
+  ]
+}

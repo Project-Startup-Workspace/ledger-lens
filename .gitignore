@@ -36,6 +36,3 @@ service-account*.json
 *.swp
 .DS_Store
 
-# Local assistant settings
-.claude/
-CLAUDE.md

@@ -1,0 +1,82 @@
+[project]
+name = "ledger-lens"
+version = "0.1.0"
+description = "Agents and API that turn informal business evidence into an auditable credit file."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "cryptography>=45",
+  "fastapi>=0.120",
+  "google-genai>=2.29",
+  "pydantic>=2.11",
+  "pydantic-settings>=2.9",
+  "python-multipart>=0.0.20",
+  "uvicorn[standard]>=0.35",
+]
+
+[project.optional-dependencies]
+# Google Cloud backends; local mode runs without them.
+gcp = [
+  "google-auth[requests]>=2.38",
+  "google-cloud-bigquery>=3.30",
+  "google-cloud-firestore>=2.20",
+  "google-cloud-kms>=3.4",
+  "google-cloud-modelarmor>=0.3",
+  "google-cloud-storage>=3.1",
+]
+# ADK workflow for Agent Runtime and the AuditPulse A2A service.
+agents = [
+  "a2a-sdk[http-server]>=1.2",
+  "google-adk>=2.11",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28",  # FastAPI TestClient
+  "jsonschema>=4.23",  # validates rule packs against rule-packs/schema.json in tests
+  "mypy>=1.15",
+  "numpy>=2.2",  # risk model training only; scoring is pure Python
+  "pillow>=11.2",  # demo data generation only
+  "pre-commit>=4.2",
+  "pytest>=8.3",
+  "ruff>=0.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ledger_lens"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "N"]
+ignore = ["S101"]  # assert is how pytest checks
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S"]
+"scripts/**" = ["S311"]  # seeded randomness for reproducible synthetic data
+
+[tool.mypy]
+python_version = "3.12"
+files = ["ledger_lens"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+
+# Contracts and compliance logic are held to the strictest standard.
+[[tool.mypy.overrides]]
+module = ["ledger_lens.shared.*", "ledger_lens.auditpulse.*", "ledger_lens.audit_trail.*"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["integration: needs the Firestore and Storage emulators (make emulators)"]
+# ADK labels its A2A support experimental on every call; the notice adds nothing to test output.
+filterwarnings = ["ignore:\\[EXPERIMENTAL\\]:UserWarning"]

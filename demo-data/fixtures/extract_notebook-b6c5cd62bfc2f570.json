@@ -1,0 +1,291 @@
+{
+  "script": "Latin",
+  "language": "vi",
+  "currency": "VND",
+  "entries": [
+    {
+      "date": "2026-08-10",
+      "description": "Bán hàng",
+      "amount": 1852000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        144,
+        604,
+        161,
+        742
+      ],
+      "raw_text": "10/08 Bán hàng 1852000"
+    },
+    {
+      "date": "2026-08-11",
+      "description": "Bán hàng",
+      "amount": 192000.0,
+      "direction": "in",
+      "confidence": 0.42,
+      "box_2d": [
+        186,
+        603,
+        203,
+        716
+      ],
+      "raw_text": "11/08 Bán hàng 912000"
+    },
+    {
+      "date": "2026-08-11",
+      "description": "Nhập hàng",
+      "amount": 3571000.0,
+      "direction": "out",
+      "confidence": 0.89,
+      "box_2d": [
+        224,
+        804,
+        241,
+        942
+      ],
+      "raw_text": "11/08 Nhập hàng 3571000"
+    },
+    {
+      "date": "2026-08-12",
+      "description": "Bán hàng",
+      "amount": 1395000.0,
+      "direction": "in",
+      "confidence": 0.93,
+      "box_2d": [
+        265,
+        595,
+        283,
+        733
+      ],
+      "raw_text": "12/08 Bán hàng 1395000"
+    },
+    {
+      "date": "2026-08-13",
+      "description": "Bán hàng",
+      "amount": 2423000.0,
+      "direction": "in",
+      "confidence": 0.95,
+      "box_2d": [
+        304,
+        600,
+        320,
+        743
+      ],
+      "raw_text": "13/08 Bán hàng 2423000"
+    },
+    {
+      "date": "2026-08-14",
+      "description": "Bán hàng",
+      "amount": 1758000.0,
+      "direction": "in",
+      "confidence": 0.9,
+      "box_2d": [
+        341,
+        602,
+        358,
+        740
+      ],
+      "raw_text": "14/08 Bán hàng 1758000"
+    },
+    {
+      "date": "2026-08-14",
+      "description": "Nhập hàng",
+      "amount": 2853000.0,
+      "direction": "out",
+      "confidence": 0.94,
+      "box_2d": [
+        381,
+        799,
+        398,
+        942
+      ],
+      "raw_text": "14/08 Nhập hàng 2853000"
+    },
+    {
+      "date": "2026-08-15",
+      "description": "Bán hàng",
+      "amount": 1761000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        421,
+        598,
+        438,
+        732
+      ],
+      "raw_text": "15/08 Bán hàng 1761000"
+    },
+    {
+      "date": "2026-08-16",
+      "description": "Bán hàng",
+      "amount": 2543000.0,
+      "direction": "in",
+      "confidence": 0.97,
+      "box_2d": [
+        463,
+        602,
+        480,
+        745
+      ],
+      "raw_text": "16/08 Bán hàng 2543000"
+    },
+    {
+      "date": "2026-08-17",
+      "description": "Bán hàng",
+      "amount": 2322000.0,
+      "direction": "in",
+      "confidence": 0.96,
+      "box_2d": [
+        504,
+        601,
+        520,
+        744
+      ],
+      "raw_text": "17/08 Bán hàng 2322000"
+    },
+    {
+      "date": "2026-08-18",
+      "description": "Bán hàng",
+      "amount": 2896000.0,
+      "direction": "in",
+      "confidence": 0.9,
+      "box_2d": [
+        544,
+        604,
+        562,
+        747
+      ],
+      "raw_text": "18/08 Bán hàng 2896000"
+    },
+    {
+      "date": "2026-08-18",
+      "description": "Nhập hàng",
+      "amount": 2536000.0,
+      "direction": "out",
+      "confidence": 0.96,
+      "box_2d": [
+        584,
+        802,
+        601,
+        945
+      ],
+      "raw_text": "18/08 Nhập hàng 2536000"
+    },
+    {
+      "date": "2026-08-19",
+      "description": "Bán hàng",
+      "amount": 2411000.0,
+      "direction": "in",
+      "confidence": 0.93,
+      "box_2d": [
+        622,
+        605,
+        639,
+        739
+      ],
+      "raw_text": "19/08 Bán hàng 2411000"
+    },
+    {
+      "date": "2026-08-20",
+      "description": "Bán hàng",
+      "amount": 2841000.0,
+      "direction": "in",
+      "confidence": 0.91,
+      "box_2d": [
+        661,
+        599,
+        679,
+        737
+      ],
+      "raw_text": "20/08 Bán hàng 2841000"
+    },
+    {
+      "date": "2026-08-21",
+      "description": "Bán hàng",
+      "amount": 1525000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        702,
+        606,
+        719,
+        744
+      ],
+      "raw_text": "21/08 Bán hàng 1525000"
+    },
+    {
+      "date": "2026-08-21",
+      "description": "Nhập hàng",
+      "amount": 3072000.0,
+      "direction": "out",
+      "confidence": 0.98,
+      "box_2d": [
+        746,
+        800,
+        763,
+        943
+      ],
+      "raw_text": "21/08 Nhập hàng 3072000"
+    },
+    {
+      "date": "2026-08-22",
+      "description": "Bán hàng",
+      "amount": 1415000.0,
+      "direction": "in",
+      "confidence": 0.98,
+      "box_2d": [
+        781,
+        602,
+        799,
+        736
+      ],
+      "raw_text": "22/08 Bán hàng 1415000"
+    },
+    {
+      "date": "2026-08-24",
+      "description": "Bán hàng",
+      "amount": 1128000.0,
+      "direction": "in",
+      "confidence": 0.87,
+      "box_2d": [
+        824,
+        598,
+        841,
+        732
+      ],
+      "raw_text": "24/08 Bán hàng 1128000"
+    },
+    {
+      "date": "2026-08-25",
+      "description": "Bán hàng",
+      "amount": 1012000.0,
+      "direction": "in",
+      "confidence": 0.88,
+      "box_2d": [
+        862,
+        606,
+        879,
+        740
+      ],
+      "raw_text": "25/08 Bán hàng 1012000"
+    },
+    {
+      "date": "2026-08-25",
+      "description": "Nhập hàng",
+      "amount": 2546000.0,
+      "direction": "out",
+      "confidence": 0.92,
+      "box_2d": [
+        904,
+        795,
+        921,
+        938
+      ],
+      "raw_text": "25/08 Nhập hàng 2546000"
+    }
+  ],
+  "other_text": "Sổ thu chi - Sạp chị Lan — 1",
+  "warnings": [
+    "One amount is blurred by a stain."
+  ]
+}
