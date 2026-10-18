@@ -79,9 +79,9 @@ Identity-Aware Proxy (production): put the web app behind IAP and set the `IAP_A
 
 Firebase Hosting (`infra/firebase/firebase.json`) serves only `robots.txt` itself and rewrites everything else to `ledger-lens-web`; the deploy publishes it after the web service. The sign-in proxy marks every response it gates `private, no-store`, so the Hosting CDN never caches a signed-in page.
 
-Access: the web app signs officers in; the API admits traffic at the Cloud Run layer and requires the shared token itself (Cloud Run IAM would otherwise claim the same `Authorization` header); the A2A service requires Google identity tokens.
+Access: the web app signs people in with Firebase Authentication, and the API verifies the same ID token and applies each role; the API admits traffic at the Cloud Run layer and requires the shared token itself (Cloud Run IAM would otherwise claim the same `Authorization` header); the A2A service requires Google identity tokens.
 
-Cost limits: each service is capped at 2 instances (A2A at 1), and the API allows 300 Gemini calls per UTC day across all instances (about 50 assessments), returning 429 once they are used. Spoken explanations are saved, so replaying one is free. Raise the cap with the `DAILY_MODEL_CALLS` repository variable. A billing budget only sends alerts; it does not stop spending.
+Cost limits: each service is capped at 2 instances (A2A at 1), and the API allows 300 Gemini calls per UTC day across all instances (about 50 assessments), returning 429 once they are used. Spoken explanations are saved, so replaying one is free. The platform admin can change the cap in the app (Platform settings) without a redeploy; the `DAILY_MODEL_CALLS` repository variable sets the starting value. A billing budget only sends alerts; it does not stop spending.
 
 Never put a service-account JSON key in GitHub or in this repo. CI signs in through Workload Identity Federation.
 

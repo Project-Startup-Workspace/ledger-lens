@@ -14,6 +14,8 @@ Each case folder holds:
 - `wallet-statement.csv`: wallet export, where the case has one.
 - `case.json`: applicant and loan request used to open the case.
 
+`docs/testing.md` uses these cases to walk through every role.
+
 Each case opens under a jurisdiction that has a rule pack (`lk`, `sg`, `in`). Indonesian and Vietnamese packs come after the competition; the jurisdiction switcher shows any case under any pack.
 
 `fixtures/` holds the recorded model response for each page, so the system runs offline. The blurred amount is recorded with low confidence and a misreading, to exercise the review queue and the accuracy report.
