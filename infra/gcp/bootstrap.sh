@@ -27,11 +27,22 @@ g services enable \
   aiplatform.googleapis.com run.googleapis.com artifactregistry.googleapis.com \
   storage.googleapis.com firestore.googleapis.com bigquery.googleapis.com \
   secretmanager.googleapis.com cloudkms.googleapis.com modelarmor.googleapis.com \
-  iamcredentials.googleapis.com sts.googleapis.com cloudbuild.googleapis.com
+  iamcredentials.googleapis.com sts.googleapis.com cloudbuild.googleapis.com \
+  firebase.googleapis.com firebasehosting.googleapis.com
 
 step "Artifact Registry for container images"
 exists g artifacts repositories describe ledger-lens --location="$REGION" ||
   g artifacts repositories create ledger-lens --repository-format=docker --location="$REGION"
+
+step "Firebase, for Hosting in front of the web service"
+# gcloud has no command for this; the Firebase Management API adds it to the project.
+FIREBASE_API="https://firebase.googleapis.com/v1beta1/projects/$PROJECT"
+firebase_api() {
+  curl -sf -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "x-goog-user-project: $PROJECT" "$@"
+}
+firebase_api "$FIREBASE_API" >/dev/null ||
+  firebase_api -X POST -H "Content-Type: application/json" -d '{}' "$FIREBASE_API:addFirebase"
 
 step "Firestore (case files and audit events)"
 exists g firestore databases describe --database='(default)' ||
@@ -79,7 +90,8 @@ g kms keys add-iam-policy-binding "$KEY" --keyring="$KEYRING" --location="$REGIO
   --member="serviceAccount:$RUNTIME_SA" --role=roles/cloudkms.signerVerifier >/dev/null
 
 step "Deploy permissions"
-for role in roles/run.admin roles/artifactregistry.writer roles/aiplatform.user; do
+for role in roles/run.admin roles/artifactregistry.writer roles/aiplatform.user \
+  roles/firebasehosting.admin; do
   g projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$DEPLOY_SA" \
     --role="$role" --condition=None >/dev/null
 done

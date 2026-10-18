@@ -14,6 +14,7 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
 
 | Service | Used for |
 |---|---|
+| Firebase Hosting | The public link (`<project>.web.app`); forwards every request to `ledger-lens-web` |
 | Cloud Run | `ledger-lens-web`, `ledger-lens-api`, `ledger-lens-a2a` |
 | Gemini Enterprise Agent Platform (Vertex AI) | Gemini extraction, explanations, TTS; Agent Runtime for the ADK workflow; RAG Engine |
 | Firestore | Case files and audit events (transactional appends) |
@@ -63,6 +64,8 @@ docker compose up --build      # web :3000, API :8080, AuditPulse A2A :8081
 Service accounts: `ledger-lens-runtime` (API, A2A) holds data, model and signing roles; `ledger-lens-web` (the internet-facing web app) can only read its two secrets.
 
 Identity-Aware Proxy (production): put the web app behind IAP and set the `IAP_AUDIENCE` repository variable to the backend service's audience; the deploy then sets `LL_IAP_AUDIENCE` and stops injecting the Basic sign-in users. The app then verifies IAP's signed assertion for every request; it never trusts a plain identity header. Restrict the Cloud Run ingress to the load balancer so IAP cannot be bypassed.
+
+Firebase Hosting (`infra/firebase/firebase.json`) serves only `robots.txt` itself and rewrites everything else to `ledger-lens-web`; the deploy publishes it after the web service. The sign-in proxy marks every response it gates `private, no-store`, so the Hosting CDN never caches a signed-in page.
 
 Access: the web app signs officers in; the API admits traffic at the Cloud Run layer and requires the shared token itself (Cloud Run IAM would otherwise claim the same `Authorization` header); the A2A service requires Google identity tokens.
 

@@ -102,3 +102,13 @@ jobs:
             --region "$REGION" --service-account "${{ vars.WEB_SA }}" \
             --allow-unauthenticated --max-instances 2 \
             --set-env-vars "LL_API_URL=$API_URL$AUTH_ENV" --set-secrets "$SECRETS"
+
+      # Firebase Hosting serves the public link and forwards every request to the web
+      # service. Signed-in responses are marked private, so its CDN never caches them.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Publish Firebase Hosting
+        run: >
+          npx --yes firebase-tools@15.32.1 deploy --only hosting --non-interactive
+          --project "${{ vars.GCP_PROJECT }}" --config infra/firebase/firebase.json
