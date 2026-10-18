@@ -334,8 +334,10 @@ class Explanation(Contract):
 
     borrower_text: str
     borrower_language: str
+    english_text: str | None = None  # the same text in English, for the officer to check
     audio_available: bool = False
     written_by: str  # "<model>/<prompt version>", or "template" for the English fallback
+    facts_digest: str = ""  # the facts, model and prompt it was written from
 
 
 class CaseStatus(StrEnum):
@@ -366,5 +368,8 @@ class CreditFile(Contract):
     risk: RiskResult | None = None
     compliance: ComplianceReport | None = None
     explanation: Explanation | None = None
+    # Explanations already written from the current facts, by language, so switching
+    # back to a language costs no model call.
+    translations: dict[str, Explanation] = {}
     disclosure: Disclosure | None = None
     decision: OfficerDecision | None = None

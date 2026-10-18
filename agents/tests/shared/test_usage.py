@@ -1,4 +1,4 @@
-"""The daily model-call budget, and the saved speech that keeps replays free."""
+"""The daily model-call budget; saved speech and translations keep replays free."""
 
 import dataclasses
 from concurrent.futures import ThreadPoolExecutor
@@ -10,9 +10,12 @@ from fastapi.testclient import TestClient
 from ledger_lens.api.app import create_app
 from ledger_lens.coordinator import Coordinator, build_services
 from ledger_lens.demo import open_demo_case
+from ledger_lens.explain.agent import ExplainAgent
+from ledger_lens.explain.schemas import WireExplanation
 from ledger_lens.shared import usage
 from ledger_lens.shared.config import LlmProvider, Settings
 from ledger_lens.shared.llm import OfflineLlm
+from ledger_lens.shared.safety import HeuristicScreen
 from ledger_lens.shared.usage import (
     LocalCallBudget,
     MeteredLlm,
@@ -154,9 +157,6 @@ def test_paid_audio_is_served_even_when_saving_it_fails(settings: Settings) -> N
 def test_a_spent_budget_is_reported_not_replaced_by_the_template(
     settings: Settings, tmp_path: Path
 ) -> None:
-    from ledger_lens.explain.agent import ExplainAgent
-    from ledger_lens.shared.safety import HeuristicScreen
-
     coordinator = Coordinator(build_services(settings))
     case = open_demo_case(coordinator, "synthetic-grocer-kandy", "officer-1")
     case = coordinator.assess(case.case_id, "officer-1")
@@ -165,3 +165,29 @@ def test_a_spent_budget_is_reported_not_replaced_by_the_template(
     )
     with pytest.raises(ModelBudgetExceededError):
         ExplainAgent(spent, HeuristicScreen(), settings).explain(case, "si")
+
+
+def test_switching_back_to_a_language_costs_no_model_call(settings: Settings) -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(self, **_: object) -> WireExplanation:
+            self.calls += 1
+            return WireExplanation(borrower_text="Thank you.", english_text="Thank you.")
+
+    coordinator = Coordinator(build_services(settings))
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "officer-1")
+    coordinator.assess(case.case_id, "officer-1")
+    writer = Writer()
+    online = settings.model_copy(update={"llm_provider": LlmProvider.VERTEX})
+    coordinator._s = dataclasses.replace(
+        coordinator._s,
+        explain=ExplainAgent(writer, HeuristicScreen(), online),  # type: ignore[arg-type]
+    )
+    for language in ("ta", "en", "ta", "en", "id"):
+        shown = coordinator.explain_in(case.case_id, language, "officer-1")
+        assert shown.borrower_language == language
+    assert writer.calls == 3
+    stored = coordinator.get(case.case_id)
+    assert set(stored.translations) == {"ta", "en", "id"}
