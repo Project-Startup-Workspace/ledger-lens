@@ -113,6 +113,8 @@ export const api = {
   me: () => request<Me>("/me"),
   registerOrganisation: (name: string, type: OrgType, jurisdiction: string | null) =>
     request<Me>("/me/organisation", json({ name, type, jurisdiction })),
+  addOrganisationAdmin: (orgId: string, account: NewAccount) =>
+    request<Member>(`/organisations/${orgId}/admins`, json(account)),
   setOrganisationStatus: (orgId: string, status: OrgStatus) =>
     request<Organisation>(`/organisations/${orgId}/status`, json({ status })),
   platformSettings: () => request<PlatformSettings>("/platform/settings"),

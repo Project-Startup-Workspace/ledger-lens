@@ -158,14 +158,14 @@ export function TeamPage() {
         </Card>
       )}
       {grantsAccess && (
-        <Card title="Audit firms with access">
+        <Card title="Who can see your cases">
           <p className="mb-3 text-sm text-slate-600">
-            A firm you grant access sees, reviews and exports every case of{" "}
-            {type === "business" ? "your business" : "your organisation"}, until you revoke it. Both
-            are recorded.
+            An audit firm you grant access can audit every case of{" "}
+            {type === "business" ? "your business" : "your organisation"} until you revoke it.
+            Platform support can read them for 24 hours. Every grant and revocation is recorded.
           </p>
           <ul className="mb-3 space-y-2 text-sm">
-            {live.length === 0 && <li className="text-slate-500">No firm has access.</li>}
+            {live.length === 0 && <li className="text-slate-500">No one else has access.</li>}
             {live.map((g) => (
               <li key={g.id} className="flex items-center justify-between gap-2">
                 <span>

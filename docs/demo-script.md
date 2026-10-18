@@ -1,20 +1,19 @@
-# Demo script (3 minutes)
+# Demo script (3:30)
 
-One job: show that a messy notebook becomes a decision a lender can defend, in any JAPAC market.
+One job: show that a microbusiness's everyday records become one shared, traceable record that the owner, the lender and the auditor all rely on.
 
-Before going on stage: open the web app on a phone, then open the **Warung Jakarta** and **Grocer Kandy** demo cases and assess both. Keep a recording of every step as a backup; if a live step fails, switch to the recording without comment.
+Before recording, create one account per role (business owner, loan officer, credit reviewer, audit officer, audit reviewer) and keep each in its own browser profile. Prepare the Warung Bu Ratna case (Bahasa Indonesia, Singapore rules) as the owner, send it to the lender, and have a thin-file case assessed for the path to approval. Keep a backup take of every shot.
 
-| Time | Beat | On screen |
+| Time | Beat | Signed in as · on screen |
 |---|---|---|
-| 0:00–0:20 | **Hook.** "Three shopkeepers, three scripts, the same rejection letter." | Home: the three demo cases (Bahasa Indonesia, Sinhala, Vietnamese) |
-| 0:20–1:00 | **Evidence, live.** Photograph a notebook page. Boxes light up; tap a figure to see where it came from. The blurred amount is marked for review, not guessed. | Warung Jakarta → Evidence; then Weekly cash flow |
-| 1:00–1:30 | **The fraud catch.** The wallet statement disagrees with the notebook in the week of 14 Sep; the system drafts the question to ask. | Notebook vs wallet: high flag, "Ask: …" |
-| 1:30–2:00 | **Risk with reasons.** Grade and top reasons; the high flag routes it to a person. Switch to Kandy for a clean approval, or Ho Chi Minh City for a "path to approval". | Risk panel |
-| 2:00–2:30 | **AuditPulse.** Switch Sri Lanka → Singapore → India; the checklist changes, each item cites its rule. Record a decision, then **Export audit pack**. | Compliance; Decision; Audit trail ("chain intact") |
-| 2:30–2:50 | **The borrower's side.** Play the explanation in Tamil with English subtitles. | For the borrower: Tamil (needs Gemini) |
-| 2:50–3:00 | **Close.** "Built on Gemini Enterprise Agent Platform. Launching with Sri Lankan lenders under the new 2026 licensing law, designed for every JAPAC script." | — |
+| 0:00–0:15 | **Hook.** A kiosk's accounts live in a notebook: hard to read, check or share. | Sign-in page |
+| 0:15–0:45 | **Evidence.** Photograph the pages; Gemini reads every line; tap a figure to see its box. A blurred amount goes to review, never guessed. | Owner · upload, Assess, Evidence |
+| 0:45–1:10 | **The owner's insights.** Trend, best and weakest weeks, cost share, loan readiness. Private until shared. | Owner · home |
+| 1:10–1:35 | **Shared, checked.** Sent to one lender; the wallet disagrees with the notebook in one week; the officer asks, the owner answers, on the record. | Owner → loan officer · Notebook vs wallet, Requests |
+| 1:35–2:00 | **Four eyes.** The officer prepares and sends it to a credit reviewer. A thin file gets a path to approval. | Loan officer · Risk, Credit review |
+| 2:00–2:25 | **Decision.** AuditPulse checks Singapore, India or Sri Lanka rules, citing each; the reviewer decides with a reason. | Credit reviewer · Compliance, Decision |
+| 2:25–2:55 | **Audit.** The granted audit firm's officer records findings; the audit reviewer approves the report; export the KMS-signed pack. | Audit officer → audit reviewer · Audit engagements |
+| 2:55–3:15 | **The borrower hears why** in Bahasa Indonesia, with English beside it. | Owner · For the borrower |
+| 3:15–3:30 | **Close.** Gemini on Vertex AI, Cloud Run, Firestore, Firebase Authentication and Hosting. | Architecture |
 
-Before the demo, check:
-- The live run uses hand-written notebooks with recorded labels (`demo-data/README.md`), not only the synthetic pages.
-- `make eval` results are up to date and quoted from `eval/results/latest.md`.
-- The `demo` environment is frozen (no deploys on Sunday).
+If the daily Gemini cap is reached during a take, finished cases still play (replays cost no model calls), and the platform admin can raise the cap on the platform page.

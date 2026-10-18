@@ -303,6 +303,13 @@ def test_platform_approves_self_registered_organisations(api: Api, identity: Fak
     events = [e["event_type"] for e in api.ok("root", "GET", "/organisation/audit")["events"]]
     assert "member_added" in events  # the platform's own chain
 
+    admin = {"email": "second@newbank.test", "password": PASSWORD}
+    assert (
+        api("bank_admin", "POST", f"/organisations/{org_id}/admins", json=admin).status_code == 403
+    )
+    added = api.ok("root", "POST", f"/organisations/{org_id}/admins", json=admin)
+    assert added["role"] == "admin" and added["org_id"] == org_id
+
     closed = {"self_registration": False}
     api.ok("root", "POST", "/platform/settings", json=closed)
     api.people["late"] = identity.sign_up("late@firm.test")
