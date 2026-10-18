@@ -10,9 +10,11 @@ import { useSession } from "./auth-provider";
 import { Badge, Button, Card, ErrorNote, Field } from "./ui";
 
 const ROLES: Partial<Record<string, Role[]>> = {
-  lender: ["officer", "admin"],
-  audit_firm: ["auditor", "admin"],
+  lender: ["loan_officer", "credit_reviewer", "admin"],
+  audit_firm: ["audit_officer", "audit_reviewer", "admin"],
+  business: ["accountant", "owner"],
 };
+const PLATFORM_ORG = "org_platform"; // support access goes to the platform itself
 
 /** An organisation's admin: its people, which audit firms may see its cases, and its log. */
 export function TeamPage() {
@@ -78,7 +80,10 @@ export function TeamPage() {
   }
 
   if (!me?.org) return <p className="text-sm text-slate-500">Loading…</p>;
-  const live = grants.filter((g) => !g.revoked_at);
+  const live = grants.filter(
+    (g) => !g.revoked_at && (!g.expires_at || new Date(g.expires_at) > new Date()),
+  );
+  const supportLive = live.some((g) => g.grantee_org_id === PLATFORM_ORG);
   const ungranted = firms.filter((f) => !live.some((g) => g.grantee_org_id === f.id));
 
   return (
@@ -91,23 +96,43 @@ export function TeamPage() {
             {members.map((m) => (
               <li key={m.uid} className="flex items-center justify-between gap-2 py-2">
                 <span className={m.disabled ? "text-slate-400 line-through" : ""}>
-                  {m.email} <span className="text-slate-500">· {roleLabel(m.role)}</span>
+                  {m.email}
+                  {(m.disabled || m.uid === me.uid) && (
+                    <span className="text-slate-500"> · {roleLabel(m.role)}</span>
+                  )}
                 </span>
                 {!m.disabled && m.uid !== me.uid && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => act(() => api.removeMember(m.uid))}
-                    className="text-xs text-rose-700"
-                  >
-                    Remove
-                  </button>
+                  <span className="flex items-center gap-2">
+                    <select
+                      value={m.role}
+                      disabled={busy}
+                      onChange={(e) => act(() => api.changeRole(m.uid, e.target.value as Role))}
+                      className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                      aria-label={`Role of ${m.email}`}
+                    >
+                      {roles.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => act(() => api.removeMember(m.uid))}
+                      className="text-xs text-rose-700"
+                    >
+                      Remove
+                    </button>
+                  </span>
                 )}
               </li>
             ))}
           </ul>
           <form onSubmit={addMember} className="space-y-3">
-            <p className="text-sm font-medium">Add a colleague</p>
+            <p className="text-sm font-medium">
+              {type === "business" ? "Add an accountant or co-owner" : "Add a colleague"}
+            </p>
             <Field label="Email" name="email" type="email" />
             <Field label="Name" name="display_name" required={false} />
             <div className="grid grid-cols-2 gap-3">
@@ -144,8 +169,13 @@ export function TeamPage() {
             {live.map((g) => (
               <li key={g.id} className="flex items-center justify-between gap-2">
                 <span>
-                  <span className="font-medium">{g.grantee_name}</span>{" "}
-                  <span className="text-slate-500">since {shortDate(g.granted_at)}</span>
+                  <span className="font-medium">
+                    {g.grantee_org_id === PLATFORM_ORG ? "Platform support" : g.grantee_name}
+                  </span>{" "}
+                  <span className="text-slate-500">
+                    since {shortDate(g.granted_at)}
+                    {g.expires_at && `, until ${new Date(g.expires_at).toLocaleString()}`}
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -169,6 +199,15 @@ export function TeamPage() {
                 Grant {f.name}
               </Button>
             ))}
+            {!supportLive && (
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => act(() => api.grant(PLATFORM_ORG))}
+              >
+                Allow platform support for 24 hours
+              </Button>
+            )}
           </div>
         </Card>
       )}

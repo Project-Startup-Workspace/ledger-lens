@@ -6,6 +6,7 @@ import { api, urls } from "@/lib/api";
 import { money, shortDate } from "@/lib/format";
 import type { AuditLog, CreditFile, Outcome } from "@/lib/types";
 
+import { useSession } from "./auth-provider";
 import { Badge, Button, Card, ErrorNote, recommendationTone } from "./ui";
 
 /** The officer decides; the system records who, what, why, and seals it in the audit trail. */
@@ -14,14 +15,18 @@ export function DecisionPanel({
   busy,
   run,
   canDecide,
+  canAcknowledge,
 }: {
   credit: CreditFile;
   busy: boolean;
   run: (action: () => Promise<unknown>) => Promise<void>;
-  /** Only the lender's staff decide; everyone else sees the outcome when it is recorded. */
+  /** The assigned credit reviewer (or the admin) decides; others see the outcome. */
   canDecide: boolean;
+  /** The loan officer records it, or the owner acknowledges the terms themselves. */
+  canAcknowledge: boolean;
 }) {
   const id = credit.case_id;
+  const { me } = useSession();
   const [outcome, setOutcome] = useState<Outcome>(credit.risk?.recommendation ?? "refer");
   const [reason, setReason] = useState("");
   const [audit, setAudit] = useState<AuditLog | null>(null);
@@ -80,13 +85,15 @@ export function DecisionPanel({
               <Badge tone="green">acknowledged {shortDate(disclosure.acknowledged_at)}</Badge>
             ) : (
               !decision &&
-              canDecide && (
+              canAcknowledge && (
                 <Button
                   variant="secondary"
                   disabled={busy}
                   onClick={() => run(() => api.acknowledge(id))}
                 >
-                  Borrower has read and acknowledged it
+                  {me?.org?.type === "business"
+                    ? "I have read these terms"
+                    : "Borrower has read and acknowledged it"}
                 </Button>
               )
             )}
@@ -109,7 +116,11 @@ export function DecisionPanel({
             <p className="text-slate-600">“{decision.reason}”</p>
           </div>
         ) : !canDecide ? (
-          <p className="text-sm text-slate-500">Waiting for the lender&apos;s decision.</p>
+          <p className="text-sm text-slate-500">
+            {credit.credit_review
+              ? `With ${credit.credit_review.reviewer} for a decision.`
+              : "Waiting for the lender's decision."}
+          </p>
         ) : (
           <div className="space-y-3">
             <div className="flex gap-2">

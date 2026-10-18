@@ -39,6 +39,17 @@ const ORG_LABELS = {
 
 export const orgLabel = (type: keyof typeof ORG_LABELS): string => ORG_LABELS[type];
 
+const ROLE_LABELS: Record<string, string> = {
+  platform_admin: "platform admin",
+  admin: "organisation admin",
+  loan_officer: "loan officer",
+  credit_reviewer: "credit reviewer",
+  audit_officer: "audit officer",
+  audit_reviewer: "audit reviewer",
+  owner: "owner",
+  accountant: "accountant",
+};
+
 export function roleLabel(role: string | null): string {
-  return role === "platform_admin" ? "platform admin" : (role ?? "no role yet");
+  return role ? (ROLE_LABELS[role] ?? role) : "no role yet";
 }

@@ -1,5 +1,5 @@
-"""Organisations, members and access grants, with every change in the organisation's own
-audit chain (keyed by its id, beside the case chains).
+"""Organisations, members, access grants and platform settings, with every change in the
+organisation's own audit chain (keyed by its id, beside the case chains).
 
 Run `python -m ledger_lens.organisations --help` for the set-up commands.
 """
@@ -9,6 +9,7 @@ import getpass
 import threading
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from ledger_lens.access import AccessDeniedError, Principal, grantors
@@ -20,14 +21,18 @@ from ledger_lens.shared.schemas import (
     AccessGrant,
     Member,
     Organisation,
+    OrgStatus,
     OrgType,
+    PlatformConfig,
     Role,
     utc_now,
 )
 
 PLATFORM_ORG = "org_platform"
 MEMBER_CACHE_S = 30.0  # a removed member loses access within this time on every instance
+CONFIG_CACHE_S = 30.0
 MIN_PASSWORD = 8
+SUPPORT_ACCESS = timedelta(hours=24)  # how long the platform's support access lasts
 
 
 class SetupError(ValueError):
@@ -50,6 +55,7 @@ class Organisations:
         self._clock = clock
         self._cache: dict[str, tuple[float, Principal]] = {}
         self._cache_guard = threading.Lock()
+        self._config: tuple[float, PlatformConfig] | None = None
 
     @property
     def identity(self) -> IdentityProvider | None:
@@ -80,33 +86,53 @@ class Organisations:
         return who
 
     def single_lender_principal(self, name: str) -> Principal:
-        """Single-lender sign-in: everyone is an officer of the default lender."""
+        """Single-lender sign-in: everyone is the default lender's admin, who may do
+        every lender task, as in releases before organisations."""
         org = Organisation(id=self.default_lender, name="Default lender", type=OrgType.LENDER)
-        member = Member(uid=name, email=name, org_id=org.id, role=Role.OFFICER)
+        member = Member(uid=name, email=name, org_id=org.id, role=Role.ADMIN)
         return Principal(name, name, name, member, org)
 
     def granted_by(self, who: Principal) -> set[str]:
-        """Organisations that let `who`'s audit firm see their cases."""
-        if who.org_type is not OrgType.AUDIT_FIRM:
+        """Organisations whose grants to `who`'s audit firm or platform still stand."""
+        if who.org_type not in (OrgType.AUDIT_FIRM, OrgType.PLATFORM) or not who.active:
             return set()
         return grantors(self._d.list_grants(grantee_org_id=who.org_id()))
 
-    # --- Organisations and members ----------------------------------------------------
+    # --- Organisations ----------------------------------------------------------------
 
-    def register_business(
-        self, who: Principal, *, business_name: str, jurisdiction: str | None
+    def register(
+        self, who: Principal, *, name: str, org_type: OrgType, jurisdiction: str | None
     ) -> Principal:
-        """A newly signed-up person creates their business and becomes its owner."""
+        """A newly signed-up person registers their organisation. A business starts at
+        once with them as owner; a lender or audit firm waits for the platform's approval,
+        with them as its admin."""
         self._need_identity()
         if who.member is not None:
             raise SetupError("this account already belongs to an organisation")
+        if org_type is OrgType.PLATFORM:
+            raise AccessDeniedError("the platform cannot be registered")
+        business = org_type is OrgType.BUSINESS
+        if not business and not self.config().self_registration:
+            raise AccessDeniedError("lenders and audit firms join by invitation at the moment")
         org = Organisation(
-            name=business_name.strip(), type=OrgType.BUSINESS, jurisdiction=jurisdiction
+            name=name.strip(),
+            type=org_type,
+            jurisdiction=jurisdiction,
+            status=OrgStatus.ACTIVE if business else OrgStatus.PENDING,
         )
         self._d.save_org(org)
-        self._record(org.id, "organisation_created", who, {"name": org.name, "type": org.type})
+        self._record(
+            org.id,
+            "organisation_registered",
+            who,
+            {"name": org.name, "type": org.type, "status": org.status},
+        )
         member = Member(
-            uid=who.uid, email=who.email, display_name=who.name, org_id=org.id, role=Role.OWNER
+            uid=who.uid,
+            email=who.email,
+            display_name=who.name,
+            org_id=org.id,
+            role=Role.OWNER if business else Role.ADMIN,
         )
         self._join(member, who)
         return Principal(who.uid, who.email, who.name, member, org)
@@ -122,28 +148,94 @@ class Organisations:
         admin_name: str,
         admin_password: str,
     ) -> Organisation:
-        """The platform admin adds a lender or audit firm together with its first admin."""
-        self._require_role(who, Role.PLATFORM_ADMIN)
+        """The platform admin adds a lender or audit firm, approved, with its first admin."""
+        self._require_platform(who)
         if org_type not in (OrgType.LENDER, OrgType.AUDIT_FIRM):
             raise SetupError("only lenders and audit firms are created here")
         org = Organisation(name=name.strip(), type=org_type, jurisdiction=jurisdiction)
+        # The account first: a taken email then leaves no organisation without an admin.
+        uid = self._account(admin_email, admin_name, admin_password)
         self._d.save_org(org)
         self._record(org.id, "organisation_created", who, {"name": org.name, "type": org.type})
-        self._add(who, org, admin_email, admin_name, admin_password, Role.ADMIN)
+        email = admin_email.strip().lower()
+        self._join(
+            Member(
+                uid=uid,
+                email=email,
+                display_name=admin_name.strip(),
+                org_id=org.id,
+                role=Role.ADMIN,
+            ),
+            who,
+        )
         return org
+
+    def set_status(self, who: Principal, org_id: str, status: OrgStatus) -> Organisation:
+        """The platform admin approves, suspends or reinstates an organisation."""
+        self._require_platform(who)
+        org = self._d.get_org(org_id)
+        if org is None or org.type is OrgType.PLATFORM:
+            raise LookupError(org_id)
+        if org.status is status:
+            return org
+        previous = org.status
+        org = org.model_copy(update={"status": status})
+        self._d.save_org(org)
+        with self._cache_guard:
+            self._cache.clear()  # members' cached organisation carries the old status
+        event = {
+            OrgStatus.ACTIVE: "organisation_approved"
+            if previous is OrgStatus.PENDING
+            else "organisation_reinstated",
+            OrgStatus.SUSPENDED: "organisation_suspended",
+            OrgStatus.PENDING: "organisation_pending",
+        }[status]
+        self._record(org.id, event, who, {"from": previous, "to": status})
+        return org
+
+    def organisations(self, who: Principal, org_type: OrgType | None = None) -> list[Organisation]:
+        """The platform admin sees every organisation; others see the active lenders and
+        audit firms, those they can send applications to or grant access to."""
+        if who.role is Role.PLATFORM_ADMIN:
+            return self._d.list_orgs(org_type)
+        who.org_id()
+        public = (OrgType.LENDER, OrgType.AUDIT_FIRM)
+        if org_type is not None and org_type not in public:
+            raise AccessDeniedError("you may list lenders and audit firms only")
+        return [
+            o
+            for t in ([org_type] if org_type else public)
+            for o in self._d.list_orgs(t)
+            if o.status is OrgStatus.ACTIVE
+        ]
+
+    def organisation(self, org_id: str) -> Organisation | None:
+        return self._d.get_org(org_id)
+
+    # --- Members ----------------------------------------------------------------------
 
     def add_member(
         self, who: Principal, *, email: str, display_name: str, password: str, role: Role
     ) -> Member:
-        """An organisation's admin adds a colleague with a starting password."""
+        """An organisation's admin (or a business owner) adds a colleague."""
         org = self._admin_org(who)
         return self._add(who, org, email, display_name, password, role)
 
+    def change_role(self, who: Principal, uid: str, role: Role) -> Member:
+        org = self._admin_org(who)
+        member = self._colleague(org, uid)
+        if uid == who.uid:
+            raise SetupError("ask another admin to change your own role")
+        if role not in ROLES_BY_ORG_TYPE[org.type]:
+            raise SetupError(f"a {org.type.value} cannot have the role {role.value}")
+        previous = member.role
+        member = member.model_copy(update={"role": role})
+        self._join(member, who, event="role_changed", extra={"from": previous})
+        return member
+
     def remove_member(self, who: Principal, uid: str) -> Member:
         org = self._admin_org(who)
-        member = self._d.get_member(uid)
-        if member is None or member.org_id != org.id:
-            raise LookupError(uid)
+        member = self._colleague(org, uid)
         if uid == who.uid:
             raise SetupError("you cannot remove yourself")
         assert self._identity is not None
@@ -157,38 +249,46 @@ class Organisations:
     def members(self, who: Principal) -> list[Member]:
         return self._d.list_members(self._admin_org(who).id)
 
-    def organisations(self, who: Principal, org_type: OrgType | None = None) -> list[Organisation]:
-        """The platform admin sees every organisation; others see lenders and audit firms,
-        the organisations they can send applications to or grant access to."""
-        if who.role is Role.PLATFORM_ADMIN:
-            return self._d.list_orgs(org_type)
-        who.org_id()
-        public = (OrgType.LENDER, OrgType.AUDIT_FIRM)
-        if org_type is not None and org_type not in public:
-            raise AccessDeniedError("you may list lenders and audit firms only")
-        return [o for t in ([org_type] if org_type else public) for o in self._d.list_orgs(t)]
+    def colleagues(self, who: Principal, role: Role | None = None) -> list[Member]:
+        """Active members of `who`'s organisation, e.g. the reviewers a case can go to."""
+        return [
+            m
+            for m in self._d.list_members(who.org_id())
+            if not m.disabled and (role is None or m.role is role)
+        ]
 
-    def organisation(self, org_id: str) -> Organisation | None:
-        return self._d.get_org(org_id)
+    def member(self, uid: str) -> Member | None:
+        member = self._d.get_member(uid)
+        return None if member is None or member.disabled else member
 
     # --- Access grants ----------------------------------------------------------------
 
-    def grant(self, who: Principal, audit_firm_id: str) -> AccessGrant:
-        """A lender or business admin lets an audit firm see the organisation's cases."""
+    def grant(self, who: Principal, grantee_org_id: str) -> AccessGrant:
+        """A lender or business admin lets an audit firm see its cases until revoked, or
+        lets the platform's support see them for a day."""
         org = self._admin_org(who)
         if org.type not in (OrgType.LENDER, OrgType.BUSINESS):
             raise SetupError("only lenders and businesses grant access")
-        firm = self._d.get_org(audit_firm_id)
-        if firm is None or firm.type is not OrgType.AUDIT_FIRM:
-            raise SetupError("access can be granted to audit firms only")
-        live = self._d.list_grants(grantor_org_id=org.id, grantee_org_id=firm.id)
-        if existing := next((g for g in live if g.revoked_at is None), None):
+        grantee = self._d.get_org(grantee_org_id)
+        support = grantee is not None and grantee.type is OrgType.PLATFORM
+        if grantee is None or not (support or grantee.type is OrgType.AUDIT_FIRM):
+            raise SetupError("access can be granted to audit firms and platform support only")
+        if grantee.status is not OrgStatus.ACTIVE:
+            raise SetupError(f"{grantee.name} is not active")
+        now = utc_now()
+        live = self._d.list_grants(grantor_org_id=org.id, grantee_org_id=grantee.id)
+        if existing := next((g for g in live if g.live(now)), None):
             return existing
-        grant = AccessGrant(grantor_org_id=org.id, grantee_org_id=firm.id, granted_by=who.actor)
+        grant = AccessGrant(
+            grantor_org_id=org.id,
+            grantee_org_id=grantee.id,
+            granted_by=who.actor,
+            expires_at=now + SUPPORT_ACCESS if support else None,
+        )
         self._d.save_grant(grant)
-        payload = {"grant": grant.id, "audit_firm": firm.id}
+        payload = {"grant": grant.id, "to": grantee.id, "expires_at": grant.expires_at}
         self._record(org.id, "access_granted", who, payload)
-        self._record(firm.id, "access_received", who, payload | {"from": org.id})
+        self._record(grantee.id, "access_received", who, payload | {"from": org.id})
         return grant
 
     def revoke(self, who: Principal, grant_id: str) -> AccessGrant:
@@ -200,35 +300,56 @@ class Organisations:
             return grant
         grant = grant.model_copy(update={"revoked_at": utc_now(), "revoked_by": who.actor})
         self._d.save_grant(grant)
-        payload = {"grant": grant.id, "audit_firm": grant.grantee_org_id}
+        payload = {"grant": grant.id, "to": grant.grantee_org_id}
         self._record(org.id, "access_revoked", who, payload)
         self._record(grant.grantee_org_id, "access_withdrawn", who, payload | {"from": org.id})
         return grant
 
     def grants(self, who: Principal) -> list[AccessGrant]:
-        """Grants this organisation gave, or (for an audit firm) received."""
+        """Grants this organisation gave or, for an audit firm or the platform, received."""
         org_id = who.org_id()
-        if who.org_type is OrgType.AUDIT_FIRM:
+        if who.org_type in (OrgType.AUDIT_FIRM, OrgType.PLATFORM):
             return self._d.list_grants(grantee_org_id=org_id)
         return self._d.list_grants(grantor_org_id=org_id)
 
     def events(self, who: Principal) -> list[dict[str, Any]]:
         """The organisation's own audit chain, for its admin."""
-        org = self._admin_org(who)
+        org = who.org if who.role is Role.PLATFORM_ADMIN else self._admin_org(who)
+        assert org is not None
         return [e.model_dump(mode="json") for e in self._audit.events(org.id)]
+
+    # --- Platform settings ------------------------------------------------------------
+
+    def config(self) -> PlatformConfig:
+        """The platform's settings, from a short cache shared by every request."""
+        now = self._clock()
+        cached = self._config
+        if cached and now - cached[0] < CONFIG_CACHE_S:
+            return cached[1]
+        config = self._d.get_config() or PlatformConfig()
+        self._config = (now, config)
+        return config
+
+    def update_config(self, who: Principal, changes: dict[str, Any]) -> PlatformConfig:
+        self._require_platform(who)
+        config = PlatformConfig.model_validate(
+            self.config().model_dump()
+            | changes
+            | {"updated_by": who.actor, "updated_at": utc_now()}
+        )
+        self._d.save_config(config)
+        self._config = (self._clock(), config)
+        self._record(PLATFORM_ORG, "platform_settings_changed", who, changes)
+        return config
 
     # --- Set-up -----------------------------------------------------------------------
 
     def ensure_platform_admin(self, email: str, display_name: str, password: str) -> Member:
         """Create the platform organisation and its admin; run once from the command line."""
-        if self._d.get_org(PLATFORM_ORG) is None:
-            self._d.save_org(
-                Organisation(id=PLATFORM_ORG, name="Ledger Lens", type=OrgType.PLATFORM)
-            )
-        system = Principal("system", "system")
-        org = self._d.get_org(PLATFORM_ORG)
-        assert org is not None
-        return self._add(system, org, email, display_name, password, Role.PLATFORM_ADMIN)
+        org = self.ensure_organisation(
+            Organisation(id=PLATFORM_ORG, name="Ledger Lens", type=OrgType.PLATFORM)
+        )
+        return self._add(_SYSTEM, org, email, display_name, password, Role.PLATFORM_ADMIN)
 
     def ensure_organisation(self, org: Organisation) -> Organisation:
         """Create an organisation with a fixed id (the default lender) if it is missing."""
@@ -236,8 +357,7 @@ class Organisations:
         if existing is not None:
             return existing
         self._d.save_org(org)
-        system = Principal("system", "system")
-        self._record(org.id, "organisation_created", system, {"name": org.name, "type": org.type})
+        self._record(org.id, "organisation_created", _SYSTEM, {"name": org.name, "type": org.type})
         return org
 
     def add_to(
@@ -247,7 +367,7 @@ class Organisations:
         org = self._d.get_org(org_id)
         if org is None:
             raise LookupError(org_id)
-        return self._add(Principal("system", "system"), org, email, display_name, password, role)
+        return self._add(_SYSTEM, org, email, display_name, password, role)
 
     # --- Internals --------------------------------------------------------------------
 
@@ -260,20 +380,29 @@ class Organisations:
         password: str,
         role: Role,
     ) -> Member:
-        identity = self._need_identity()
         if role not in ROLES_BY_ORG_TYPE[org.type]:
             raise SetupError(f"a {org.type.value} cannot have the role {role.value}")
-        if len(password) < MIN_PASSWORD:
-            raise SetupError(f"the password needs at least {MIN_PASSWORD} characters")
+        uid = self._account(email, display_name, password)
         email = email.strip().lower()
-        uid = identity.create_account(email, password, display_name.strip())
         member = Member(
             uid=uid, email=email, display_name=display_name.strip(), org_id=org.id, role=role
         )
         self._join(member, who)
         return member
 
-    def _join(self, member: Member, who: Principal) -> None:
+    def _account(self, email: str, display_name: str, password: str) -> str:
+        identity = self._need_identity()
+        if len(password) < MIN_PASSWORD:
+            raise SetupError(f"the password needs at least {MIN_PASSWORD} characters")
+        return identity.create_account(email.strip().lower(), password, display_name.strip())
+
+    def _join(
+        self,
+        member: Member,
+        who: Principal,
+        event: str = "member_added",
+        extra: dict[str, Any] | None = None,
+    ) -> None:
         assert self._identity is not None
         self._d.save_member(member)
         org = self._d.get_org(member.org_id)
@@ -282,18 +411,27 @@ class Organisations:
             member.uid, {"org_id": org.id, "org_type": org.type.value, "role": member.role.value}
         )
         self._forget(member.uid)
-        self._record(org.id, "member_added", who, {"uid": member.uid, "role": member.role})
+        payload = {"uid": member.uid, "role": member.role} | (extra or {})
+        self._record(org.id, event, who, payload)
+
+    def _colleague(self, org: Organisation, uid: str) -> Member:
+        member = self._d.get_member(uid)
+        if member is None or member.org_id != org.id:
+            raise LookupError(uid)
+        return member
 
     def _admin_org(self, who: Principal) -> Organisation:
         self._need_identity()
-        if not who.is_org_admin or who.org is None or who.org_type is OrgType.PLATFORM:
+        if not who.is_org_admin or who.org_type is OrgType.PLATFORM:
             raise AccessDeniedError("only the organisation's admin may do this")
+        who.org_id()  # refused while the organisation is pending or suspended
+        assert who.org is not None
         return who.org
 
     @staticmethod
-    def _require_role(who: Principal, role: Role) -> None:
-        if who.role is not role:
-            raise AccessDeniedError(f"only a {role.value} may do this")
+    def _require_platform(who: Principal) -> None:
+        if who.role is not Role.PLATFORM_ADMIN:
+            raise AccessDeniedError("only the platform admin may do this")
 
     def _need_identity(self) -> IdentityProvider:
         if self._identity is None:
@@ -306,6 +444,9 @@ class Organisations:
 
     def _record(self, org_id: str, event: str, who: Principal, payload: dict[str, Any]) -> None:
         self._audit.append(org_id, event, who.actor, payload)
+
+
+_SYSTEM = Principal("system", "system")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -15,7 +15,9 @@ import { DecisionPanel } from "./decision-panel";
 import { EvidencePanel } from "./evidence-panel";
 import { ExplanationPanel } from "./explanation-panel";
 import { useSession } from "./auth-provider";
-import { ReviewPanel } from "./review-panel";
+import { CreditReviewPanel } from "./credit-review-panel";
+import { EngagementPanel } from "./engagement-panel";
+import { RequestsPanel } from "./requests-panel";
 import { RiskPanel } from "./risk-panel";
 import { SharingPanel } from "./sharing-panel";
 import { Badge, Button, ErrorNote } from "./ui";
@@ -77,7 +79,7 @@ export function CaseWorkspace() {
       <EvidencePanel
         credit={credit}
         busy={busy}
-        onUpload={can.prepare ? (kind, file) => run(() => api.upload(id, kind, file)) : undefined}
+        onUpload={can.upload ? (kind, file) => run(() => api.upload(id, kind, file)) : undefined}
       />
       {can.prepare && (
         <Button
@@ -106,6 +108,7 @@ export function CaseWorkspace() {
           canChange={can.explain}
         />
       )}
+      <CreditReviewPanel credit={credit} canAssign={can.assignReviewer} busy={busy} run={run} />
       {assessed && (
         <DecisionPanel
           key={credit.revision}
@@ -113,9 +116,17 @@ export function CaseWorkspace() {
           busy={busy}
           run={run}
           canDecide={can.decide}
+          canAcknowledge={can.acknowledge}
         />
       )}
-      <ReviewPanel credit={credit} canReview={can.review} busy={busy} run={run} />
+      <RequestsPanel
+        credit={credit}
+        askTo={can.askTo}
+        answerAs={can.answerAs}
+        busy={busy}
+        run={run}
+      />
+      <EngagementPanel credit={credit} can={can} busy={busy} run={run} />
     </div>
   );
 }

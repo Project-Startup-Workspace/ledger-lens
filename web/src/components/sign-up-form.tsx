@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 
 import { api } from "@/lib/api";
 import { writeSession } from "@/lib/firebase";
+import type { OrgType } from "@/lib/types";
 
 import { useSession } from "./auth-provider";
 import { Button, Card, ErrorNote, Field } from "./ui";
@@ -17,11 +18,18 @@ const COUNTRIES = [
   { code: "in", name: "India" },
 ];
 
-/** A business owner creates their own account; lenders and audit firms are invited. */
+const TYPES: { value: OrgType; label: string; note: string }[] = [
+  { value: "business", label: "My business", note: "Start straight away." },
+  { value: "lender", label: "A lender", note: "Starts once the platform approves it." },
+  { value: "audit_firm", label: "An audit firm", note: "Starts once the platform approves it." },
+];
+
+/** Anyone signs up: a business starts at once; a lender or audit firm awaits approval. */
 export function SignUpForm() {
   const { auth, refresh } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [type, setType] = useState<OrgType>("business");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +46,11 @@ export function SignUpForm() {
       );
       await updateProfile(user, { displayName: value("name") });
       await writeSession(user, true);
-      await api.registerBusiness(value("business_name"), value("jurisdiction") || null);
+      await api.registerOrganisation(
+        value("business_name"),
+        value("type") as OrgType,
+        value("jurisdiction") || null,
+      );
       await refresh(); // picks up the owner role
       window.location.replace("/"); // a full load; see SignInForm
     } catch (e) {
@@ -56,14 +68,35 @@ export function SignUpForm() {
 
   return (
     <div className="mx-auto max-w-sm space-y-4">
-      <Card title="Create a business account">
+      <Card title="Create an account">
         <p className="mb-3 text-sm text-slate-600">
-          Upload your notebook and wallet records, see your weekly cash flow, and choose which
-          lender or auditor sees them.
+          Businesses upload their records, see their cash flow and choose who sees them. Lenders and
+          audit firms work from the same evidence.
         </p>
         <form onSubmit={submit} className="space-y-3">
+          <fieldset className="space-y-1 text-sm">
+            <legend className="mb-1 text-slate-600">I am signing up for</legend>
+            {TYPES.map((t) => (
+              <label key={t.value} className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  name="type"
+                  value={t.value}
+                  checked={type === t.value}
+                  onChange={() => setType(t.value)}
+                  className="mt-1"
+                />
+                <span>
+                  {t.label} <span className="text-slate-500">· {t.note}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <Field label="Your name" name="name" autoComplete="name" />
-          <Field label="Business name" name="business_name" />
+          <Field
+            label={type === "business" ? "Business name" : "Organisation name"}
+            name="business_name"
+          />
           <label className="block text-sm">
             <span className="text-slate-600">Country</span>
             <select

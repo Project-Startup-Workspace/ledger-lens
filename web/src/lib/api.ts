@@ -10,8 +10,10 @@ import type {
   Me,
   Member,
   Organisation,
+  OrgStatus,
   OrgType,
   Outcome,
+  PlatformSettings,
   Role,
 } from "./types";
 
@@ -47,7 +49,13 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    const detail = typeof body.detail === "string" ? body.detail : response.statusText;
+    // FastAPI sends a string for refusals and a list for invalid input.
+    const detail =
+      typeof body.detail === "string"
+        ? body.detail
+        : Array.isArray(body.detail) && body.detail[0]?.msg
+          ? `${body.detail[0].loc?.at(-1) ?? "input"}: ${body.detail[0].msg}`
+          : response.statusText;
     throw new ApiError(response.status, detail);
   }
   return response;
@@ -88,11 +96,33 @@ export const api = {
   audit: (id: string) => request<AuditLog>(`/cases/${id}/audit`),
   sendApplication: (id: string, lenderOrgId: string) =>
     request<CreditFile>(`/cases/${id}/send`, json({ lender_org_id: lenderOrgId })),
-  review: (id: string, outcome: "no_issues" | "issues_found", note: string) =>
-    request<CreditFile>(`/cases/${id}/reviews`, json({ outcome, note })),
+  assignReviewer: (id: string, reviewerUid: string) =>
+    request<CreditFile>(`/cases/${id}/credit-review`, json({ reviewer_uid: reviewerUid })),
+  ask: (id: string, addressedTo: "lender" | "business", message: string) =>
+    request<CreditFile>(`/cases/${id}/requests`, json({ addressed_to: addressedTo, message })),
+  answer: (id: string, requestId: string, answer: string) =>
+    request<CreditFile>(`/cases/${id}/requests/${requestId}/answer`, json({ answer })),
+  assignEngagement: (id: string, assigneeUid: string) =>
+    request<CreditFile>(`/cases/${id}/engagements`, json({ assignee_uid: assigneeUid })),
+  addFinding: (id: string, severity: "observation" | "issue", note: string) =>
+    request<CreditFile>(`/cases/${id}/findings`, json({ severity, note })),
+  submitFindings: (id: string) =>
+    request<CreditFile>(`/cases/${id}/findings/submit`, { method: "POST" }),
+  reviewEngagement: (id: string, engagementId: string, approve: boolean, note: string) =>
+    request<CreditFile>(`/cases/${id}/engagements/${engagementId}/review`, json({ approve, note })),
   me: () => request<Me>("/me"),
-  registerBusiness: (businessName: string, jurisdiction: string | null) =>
-    request<Me>("/me/business", json({ business_name: businessName, jurisdiction })),
+  registerOrganisation: (name: string, type: OrgType, jurisdiction: string | null) =>
+    request<Me>("/me/organisation", json({ name, type, jurisdiction })),
+  setOrganisationStatus: (orgId: string, status: OrgStatus) =>
+    request<Organisation>(`/organisations/${orgId}/status`, json({ status })),
+  platformSettings: () => request<PlatformSettings>("/platform/settings"),
+  updatePlatformSettings: (changes: {
+    daily_model_calls?: number | null;
+    self_registration?: boolean;
+  }) => request<PlatformSettings>("/platform/settings", json(changes)),
+  colleagues: (role?: Role) => request<Member[]>(role ? `/colleagues?role=${role}` : "/colleagues"),
+  changeRole: (uid: string, role: Role) =>
+    request<Member>(`/members/${encodeURIComponent(uid)}/role`, json({ role })),
   organisations: (type?: OrgType) =>
     request<Organisation[]>(type ? `/organisations?type=${type}` : "/organisations"),
   createOrganisation: (body: {
@@ -106,8 +136,8 @@ export const api = {
   removeMember: (uid: string) =>
     request<Member>(`/members/${encodeURIComponent(uid)}/remove`, { method: "POST" }),
   grants: () => request<AccessGrant[]>("/grants"),
-  grant: (auditFirmId: string) =>
-    request<AccessGrant>("/grants", json({ audit_firm_id: auditFirmId })),
+  grant: (granteeOrgId: string) =>
+    request<AccessGrant>("/grants", json({ grantee_org_id: granteeOrgId })),
   revoke: (grantId: string) =>
     request<AccessGrant>(`/grants/${grantId}/revoke`, { method: "POST" }),
   organisationAudit: () => request<AuditLog>("/organisation/audit"),

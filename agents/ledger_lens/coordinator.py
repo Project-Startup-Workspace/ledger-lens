@@ -14,7 +14,7 @@ from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from ledger_lens.audit_trail.chain import (
@@ -47,14 +47,17 @@ from ledger_lens.shared.pii import pseudonym
 from ledger_lens.shared.safety import build_safety_screen
 from ledger_lens.shared.schemas import (
     Applicant,
-    AuditReview,
+    AuditFinding,
     CaseStatus,
     ComplianceReport,
     Consent,
     CreditFile,
+    CreditReview,
     Disclosure,
+    Engagement,
     EvidenceDocument,
     EvidenceKind,
+    EvidenceRequest,
     Explanation,
     ExtractionResult,
     LoanRequest,
@@ -68,7 +71,7 @@ from ledger_lens.shared.storage import (
     build_blob_store,
     build_case_repository,
 )
-from ledger_lens.shared.usage import metered
+from ledger_lens.shared.usage import CallBudget, Limit, MeteredLlm, metered
 
 SYSTEM = "system"
 log = logging.getLogger(__name__)
@@ -99,10 +102,12 @@ class Services:
     packs: BlobStore
     audit: AuditStore
     signer: Signer
+    budget: CallBudget | None = None  # None when model calls are not counted
 
 
-def build_services(settings: Settings) -> Services:
-    llm = metered(build_llm(settings), settings)
+def build_services(settings: Settings, daily_limit: Limit | None = None) -> Services:
+    """`daily_limit` replaces the deployment's daily model-call cap, e.g. with a live one."""
+    llm = metered(build_llm(settings), settings, daily_limit)
     safety = build_safety_screen(settings)
     model = LogisticModel.load(settings.risk_model_path)
     fingerprint = artifact_fingerprint(settings.risk_model_path)
@@ -119,6 +124,7 @@ def build_services(settings: Settings) -> Services:
             settings,
         ),
         explain=ExplainAgent(llm, safety, settings),
+        budget=llm.budget if isinstance(llm, MeteredLlm) else None,
         cases=build_case_repository(settings),
         blobs=build_blob_store(settings, settings.evidence_bucket, "evidence"),
         packs=build_blob_store(settings, settings.audit_bucket, "audit-packs"),
@@ -204,38 +210,164 @@ class Coordinator:
             self._save(case, "application_sent", actor, {"lender": lender_org_id})
             return case
 
-    def record_review(
+    # --- Reviews, requests and engagements -------------------------------------------
+
+    def assign_credit_review(
+        self, case_id: str, *, reviewer_uid: str, reviewer: str, actor: str
+    ) -> CreditFile:
+        """A loan officer sends the case to a credit reviewer, who then decides it."""
+        with self._case(case_id) as case:
+            self._require_assessed(case)
+            self._require_open(case)
+            case.credit_review = CreditReview(
+                reviewer_uid=reviewer_uid, reviewer=reviewer, requested_by=actor
+            )
+            self._save(case, "credit_review_assigned", actor, {"reviewer": reviewer})
+            return case
+
+    def add_request(
         self,
         case_id: str,
         *,
-        org_id: str,
-        reviewer: str,
-        outcome: Literal["no_issues", "issues_found"],
-        note: str,
+        from_org_id: str,
+        addressed_to: Literal["lender", "business"],
+        message: str,
+        actor: str,
     ) -> CreditFile:
-        """An audit firm's review, pinned to the case as it was when reviewed."""
+        """Ask the lender or the business for evidence or an explanation."""
         with self._case(case_id) as case:
-            note = note.strip()
-            if not note:
-                raise CaseStateError("a note is required for every review")
-            review = AuditReview(
-                org_id=org_id,
-                reviewer=reviewer,
-                outcome=outcome,
-                note=note,
-                snapshot=snapshot_hash(case),
+            if addressed_to == "business" and case.business_org_id is None:
+                raise CaseStateError("this case has no business account to ask")
+            if addressed_to == "lender" and case.lender_org_id is None:
+                raise CaseStateError("this application has not been sent to a lender")
+            request = EvidenceRequest(
+                from_org_id=from_org_id,
+                requested_by=actor,
+                addressed_to=addressed_to,
+                message=_required(message, "a message"),
             )
-            case.reviews.append(review)
+            case.requests.append(request)
             self._save(
                 case,
-                "audit_review_recorded",
-                reviewer,
+                "evidence_requested",
+                actor,
+                {"request": request.id, "to": addressed_to, "from": from_org_id},
+            )
+            return case
+
+    def answer_request(
+        self, case_id: str, request_id: str, *, answer: str, actor: str
+    ) -> CreditFile:
+        with self._case(case_id) as case:
+            request = _find(case.requests, request_id)
+            if request.answer is not None:
+                raise CaseStateError("the request is already answered")
+            request.answer = _required(answer, "an answer")
+            request.answered_by, request.answered_at = actor, utc_now()
+            self._save(
+                case,
+                "evidence_request_answered",
+                actor,
+                {"request": request.id, "answer_sha256": sha256_hex(request.answer.encode())},
+            )
+            return case
+
+    def assign_engagement(
+        self,
+        case_id: str,
+        *,
+        audit_firm_id: str,
+        assignee_uid: str,
+        assignee: str,
+        actor: str,
+    ) -> CreditFile:
+        """An audit firm's admin assigns the case to one of its audit officers."""
+        with self._case(case_id) as case:
+            if any(
+                e.audit_firm_id == audit_firm_id and e.status != "approved"
+                for e in case.engagements
+            ):
+                raise CaseStateError("your firm already has an engagement open on this case")
+            engagement = Engagement(
+                audit_firm_id=audit_firm_id,
+                assignee_uid=assignee_uid,
+                assignee=assignee,
+                assigned_by=actor,
+            )
+            case.engagements.append(engagement)
+            self._save(
+                case,
+                "engagement_assigned",
+                actor,
+                {"engagement": engagement.id, "audit_firm": audit_firm_id, "assignee": assignee},
+            )
+            return case
+
+    def add_finding(
+        self,
+        case_id: str,
+        engagement_id: str,
+        *,
+        severity: Literal["observation", "issue"],
+        note: str,
+        actor: str,
+    ) -> CreditFile:
+        """A finding, pinned to the case as it was when written."""
+        with self._case(case_id) as case:
+            engagement = _find(case.engagements, engagement_id)
+            if engagement.status not in ("open", "returned"):
+                raise CaseStateError("the engagement is with the reviewer")
+            finding = AuditFinding(
+                author=actor,
+                severity=severity,
+                note=_required(note, "a note"),
+                snapshot=snapshot_hash(case),
+            )
+            engagement.findings.append(finding)
+            self._save(
+                case,
+                "audit_finding_recorded",
+                actor,
                 {
-                    "audit_firm": org_id,
-                    "outcome": outcome,
-                    "snapshot": review.snapshot,
-                    "note_sha256": sha256_hex(note.encode()),
+                    "engagement": engagement.id,
+                    "severity": severity,
+                    "snapshot": finding.snapshot,
+                    "note_sha256": sha256_hex(finding.note.encode()),
                 },
+            )
+            return case
+
+    def submit_engagement(self, case_id: str, engagement_id: str, *, actor: str) -> CreditFile:
+        with self._case(case_id) as case:
+            engagement = _find(case.engagements, engagement_id)
+            if engagement.status not in ("open", "returned"):
+                raise CaseStateError("the engagement is not open")
+            if not engagement.findings:
+                raise CaseStateError("record at least one finding first")
+            engagement.status = "submitted"
+            self._save(case, "engagement_submitted", actor, {"engagement": engagement.id})
+            return case
+
+    def review_engagement(
+        self, case_id: str, engagement_id: str, *, approve: bool, note: str, actor: str
+    ) -> CreditFile:
+        """The audit reviewer approves the findings as the final report, or returns them."""
+        with self._case(case_id) as case:
+            engagement = _find(case.engagements, engagement_id)
+            if engagement.status != "submitted":
+                raise CaseStateError("the engagement has not been submitted for review")
+            if actor == engagement.assignee:
+                raise CaseStateError("findings are approved by someone other than their author")
+            engagement.status = "approved" if approve else "returned"
+            engagement.reviewed_by, engagement.reviewed_at = actor, utc_now()
+            engagement.review_note = note.strip() or None
+            if approve:
+                engagement.report_snapshot = snapshot_hash(case)
+            self._save(
+                case,
+                "audit_report_approved" if approve else "engagement_returned",
+                actor,
+                {"engagement": engagement.id, "snapshot": engagement.report_snapshot},
             )
             return case
 
@@ -661,6 +793,23 @@ class Coordinator:
     def _require_assessed(case: CreditFile) -> None:
         if case.status is CaseStatus.DRAFT or case.risk is None:
             raise CaseStateError("assess the case first")
+
+
+class _HasId(Protocol):
+    id: str
+
+
+def _find[T: _HasId](items: list[T], item_id: str) -> T:
+    found = next((i for i in items if i.id == item_id), None)
+    if found is None:
+        raise CaseNotFoundError(item_id)
+    return found
+
+
+def _required(text: str, what: str) -> str:
+    if not text.strip():
+        raise CaseStateError(f"{what} is required")
+    return text.strip()
 
 
 def _terms(disclosure: Disclosure) -> tuple[object, ...]:

@@ -15,10 +15,13 @@ export function CaseList({
   title: heading = "Cases",
   demos: showDemos = true,
   empty = "No cases yet.",
+  only,
 }: {
   title?: string;
   demos?: boolean;
   empty?: string;
+  /** Keep only the cases this returns true for. */
+  only?: (c: CaseSummary) => boolean;
 }) {
   const router = useRouter();
   const [cases, setCases] = useState<CaseSummary[] | null>(null);
@@ -29,10 +32,12 @@ export function CaseList({
   useEffect(() => {
     Promise.all([api.listCases(), showDemos ? api.demoCases() : Promise.resolve([])])
       .then(([caseList, demoList]) => {
-        setCases(caseList);
+        setCases(only ? caseList.filter(only) : caseList);
         setDemos(demoList);
       })
       .catch((e: Error) => setError(e.message));
+    // `only` is a fresh function each render; the list is loaded once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showDemos]);
 
   async function openDemo(slug: string) {
@@ -83,6 +88,9 @@ export function CaseList({
                   <p className="truncate font-medium">{c.business_name}</p>
                   <p className="text-xs text-slate-500">
                     {money(c.amount, c.currency)} · {c.jurisdiction.toUpperCase()} · {c.status}
+                    {c.reviewer && ` · with ${c.reviewer}`}
+                    {c.open_requests > 0 && ` · ${c.open_requests} open request`}
+                    {c.engagements.length > 0 && ` · audit ${c.engagements.at(-1)}`}
                   </p>
                 </div>
                 {c.grade && <Badge tone={gradeTone(c.grade)}>Grade {c.grade}</Badge>}

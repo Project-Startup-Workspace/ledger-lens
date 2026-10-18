@@ -179,7 +179,9 @@ export interface CreditFile {
   decision: OfficerDecision | null;
   lender_org_id: string | null;
   business_org_id: string | null;
-  reviews: AuditReview[];
+  credit_review: CreditReview | null;
+  requests: EvidenceRequest[];
+  engagements: Engagement[];
 }
 
 export interface CaseSummary {
@@ -194,6 +196,9 @@ export interface CaseSummary {
   created_at: string;
   lender_org_id: string | null;
   business_org_id: string | null;
+  reviewer: string | null;
+  open_requests: number;
+  engagements: Engagement["status"][];
 }
 
 export interface Jurisdiction {
@@ -216,13 +221,23 @@ export interface AuditLog {
 }
 
 export type OrgType = "platform" | "lender" | "audit_firm" | "business";
-export type Role = "platform_admin" | "admin" | "officer" | "auditor" | "owner";
+export type Role =
+  | "platform_admin"
+  | "admin"
+  | "loan_officer"
+  | "credit_reviewer"
+  | "audit_officer"
+  | "audit_reviewer"
+  | "owner"
+  | "accountant";
+export type OrgStatus = "active" | "pending" | "suspended";
 
 export interface Organisation {
   id: string;
   name: string;
   type: OrgType;
   jurisdiction: string | null;
+  status: OrgStatus;
 }
 
 export interface Me {
@@ -252,14 +267,62 @@ export interface AccessGrant {
   revoked_at: string | null;
   grantor_name: string;
   grantee_name: string;
+  expires_at: string | null;
 }
 
-export interface AuditReview {
-  id: string;
-  org_id: string;
+export interface CreditReview {
+  reviewer_uid: string;
   reviewer: string;
-  outcome: "no_issues" | "issues_found";
+  requested_by: string;
+  requested_at: string;
+}
+
+export interface EvidenceRequest {
+  id: string;
+  from_org_id: string;
+  requested_by: string;
+  addressed_to: "lender" | "business";
+  message: string;
+  created_at: string;
+  answer: string | null;
+  answered_by: string | null;
+  answered_at: string | null;
+}
+
+export interface AuditFinding {
+  id: string;
+  author: string;
+  severity: "observation" | "issue";
   note: string;
   snapshot: string;
-  reviewed_at: string;
+  recorded_at: string;
+}
+
+export interface Engagement {
+  id: string;
+  audit_firm_id: string;
+  assignee_uid: string;
+  assignee: string;
+  assigned_by: string;
+  assigned_at: string;
+  status: "open" | "submitted" | "approved" | "returned";
+  findings: AuditFinding[];
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  report_snapshot: string | null;
+}
+
+export interface PlatformSettings {
+  config: {
+    daily_model_calls: number | null;
+    self_registration: boolean;
+    updated_by: string | null;
+  };
+  deployment_daily_model_calls: number;
+  effective_daily_model_calls: number;
+  model_calls_today: number | null;
+  llm_provider: string;
+  model_extract: string;
+  model_reason: string;
 }

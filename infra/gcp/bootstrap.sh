@@ -89,6 +89,10 @@ gcloud storage buckets add-iam-policy-binding "gs://$AUDIT_BUCKET" \
 g kms keys add-iam-policy-binding "$KEY" --keyring="$KEYRING" --location="$REGION" \
   --member="serviceAccount:$RUNTIME_SA" --role=roles/cloudkms.signerVerifier >/dev/null
 
+# After the service accounts exist: the runtime account manages sign-in accounts.
+step "Firebase Authentication (sign-in and roles)"
+"$(dirname "$0")/firebase-auth.sh" "$PROJECT"
+
 step "Deploy permissions"
 for role in roles/run.admin roles/artifactregistry.writer roles/aiplatform.user \
   roles/firebasehosting.admin; do
@@ -132,6 +136,7 @@ Done. Set these GitHub repository variables (Settings → Secrets and variables 
   EVIDENCE_BUCKET = $EVIDENCE_BUCKET
   AUDIT_BUCKET    = $AUDIT_BUCKET
   AUDIT_KMS_KEY   = projects/$PROJECT/locations/$REGION/keyRings/$KEYRING/cryptoKeys/$KEY/cryptoKeyVersions/1
+  FIREBASE_API_KEY (printed above by firebase-auth.sh)
 
 Still manual: a billing budget alert (Billing → Budgets & alerts), a Model Armor template,
 the RAG Engine corpus with regulator PDFs, and the ll-api-token and ll-web-users secrets

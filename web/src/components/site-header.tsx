@@ -10,8 +10,12 @@ import { useSession } from "./auth-provider";
 export function SiteHeader() {
   const { me, auth, signOut } = useSession();
   const type = me?.org?.type;
-  const canOpenCases = type === "lender" || type === "business";
-  const manages = me?.role === "admin" || me?.role === "owner";
+  const active = me?.org?.status === "active";
+  const canOpenCases =
+    active &&
+    (type === "business" ||
+      (type === "lender" && ["admin", "loan_officer"].includes(me?.role ?? "")));
+  const manages = active && (me?.role === "admin" || me?.role === "owner");
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
@@ -21,7 +25,7 @@ export function SiteHeader() {
         <nav className="flex flex-wrap items-center gap-2 text-sm">
           {manages && (
             <Link href="/team" className="rounded-lg px-2 py-1.5 text-slate-700 hover:bg-slate-100">
-              {type === "business" ? "Sharing" : "Team"}
+              {type === "business" ? "Team & sharing" : "Team & access"}
             </Link>
           )}
           {canOpenCases && (

@@ -9,7 +9,13 @@ from typing import Any, Protocol, TypeVar
 from pydantic import BaseModel
 
 from ledger_lens.shared.config import Backend, Settings
-from ledger_lens.shared.schemas import AccessGrant, Member, Organisation, OrgType
+from ledger_lens.shared.schemas import (
+    AccessGrant,
+    Member,
+    Organisation,
+    OrgType,
+    PlatformConfig,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -36,6 +42,10 @@ class Directory(Protocol):
     ) -> list[AccessGrant]:
         """Grants from or to an organisation, revoked ones included."""
         ...
+
+    def get_config(self) -> PlatformConfig | None: ...
+
+    def save_config(self, config: PlatformConfig) -> None: ...
 
 
 class LocalDirectory:
@@ -101,6 +111,12 @@ class LocalDirectory:
             key=lambda g: g.granted_at,
         )
 
+    def get_config(self) -> PlatformConfig | None:
+        return self._read("config", PlatformConfig).get("platform")
+
+    def save_config(self, config: PlatformConfig) -> None:
+        self._put("config", "platform", config)
+
 
 class FirestoreDirectory:
     """`organisations`, `members` (keyed by uid) and `grants` collections."""
@@ -158,6 +174,12 @@ class FirestoreDirectory:
             "grants", AccessGrant, grantor_org_id=grantor_org_id, grantee_org_id=grantee_org_id
         )
         return sorted(grants, key=lambda g: g.granted_at)
+
+    def get_config(self) -> PlatformConfig | None:
+        return self._get("config", "platform", PlatformConfig)
+
+    def save_config(self, config: PlatformConfig) -> None:
+        self._set("config", "platform", config)
 
 
 def build_directory(settings: Settings) -> Directory:

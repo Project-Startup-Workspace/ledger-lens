@@ -7,9 +7,10 @@ import { api } from "@/lib/api";
 import { useSession } from "./auth-provider";
 import { Button, Card, ErrorNote, Field } from "./ui";
 
-/** Signed in but not in an organisation yet: register a business, or wait for an invite. */
+/** Signed in but not in an organisation: register a business, wait for an invitation, or
+ * wait for the platform to approve a lender or audit firm. */
 export function FinishSetup() {
-  const { refresh } = useSession();
+  const { me, refresh } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -18,7 +19,7 @@ export function FinishSetup() {
     const name = String(new FormData(event.currentTarget).get("business_name")).trim();
     setBusy(true);
     try {
-      await api.registerBusiness(name, null);
+      await api.registerOrganisation(name, "business", null);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -26,6 +27,17 @@ export function FinishSetup() {
     }
   }
 
+  if (me?.org && me.org.status !== "active") {
+    return (
+      <Card title={me.org.name}>
+        <p className="text-sm text-slate-700">
+          {me.org.status === "pending"
+            ? "Your organisation is waiting for the platform's approval. You can invite colleagues and start work as soon as it is approved."
+            : "Your organisation is suspended. Contact the platform to reinstate it."}
+        </p>
+      </Card>
+    );
+  }
   return (
     <Card title="Finish setting up">
       <p className="mb-3 text-sm text-slate-600">

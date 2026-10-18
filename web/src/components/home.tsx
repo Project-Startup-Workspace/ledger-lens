@@ -2,7 +2,7 @@
 
 import { AuditorHome } from "./auditor-home";
 import { useSession } from "./auth-provider";
-import { CaseList } from "./case-list";
+import { LenderHome } from "./lender-home";
 import { FinishSetup } from "./finish-setup";
 import { OwnerHome } from "./owner-home";
 import { PlatformAdmin } from "./platform-admin";
@@ -11,9 +11,10 @@ import { PlatformAdmin } from "./platform-admin";
 export function Home() {
   const { me, ready } = useSession();
   if (!ready || !me) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (me.org && me.org.status !== "active") return <FinishSetup />;
   switch (me.org?.type) {
     case "lender":
-      return <CaseList />;
+      return <LenderHome />;
     case "business":
       return <OwnerHome />;
     case "audit_firm":

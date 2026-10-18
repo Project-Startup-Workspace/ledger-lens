@@ -1,8 +1,15 @@
 # Ledger Lens
 
-**Ledger Lens turns a shopkeeper's handwritten notebook into a credit file that a lender can trust and a regulator can audit, in any JAPAC language.**
+**Ledger Lens helps microbusinesses turn everyday financial records into actionable insights and traceable evidence that owners, auditors and financial institutions can use together.**
 
-A loan officer photographs the applicant's notebook. Five agents then do the work:
+Microbusiness records are scattered and hard to use, check or share. Owners struggle to see where they stand, auditors spend days rebuilding evidence, and lenders have no clear basis for a decision. Ledger Lens puts all three on one platform:
+
+- **Business owners** photograph their notebook, see weekly cash-flow insights and their loan readiness, and decide which lender or audit firm sees their records. An accountant can upload records and answer requests for them.
+- **Lenders** work the applications sent to them: loan officers prepare, and an assigned credit reviewer decides.
+- **Audit firms** audit the cases they are granted: an audit officer requests evidence and records findings, and an audit reviewer approves the report.
+- **The platform admin** approves organisations and runs the platform's settings, and never sees a case without time-limited support access.
+
+Sign-in and roles use Firebase Authentication. Under every case, five agents do the work:
 
 1. **Evidence** reads every line, in any script, with a box showing where each figure came from.
 2. **Consistency** checks the notebook against the applicant's wallet statement to catch pages written the night before.
@@ -10,7 +17,7 @@ A loan officer photographs the applicant's notebook. Five agents then do the wor
 4. **AuditPulse** checks the decision against the lending rules of Sri Lanka, Singapore or India, citing each rule.
 5. **Explain** writes the officer's report and explains the outcome to the borrower in their own language.
 
-The officer decides. Every step is recorded in a hash-chained audit trail and exported as a signed audit pack.
+A person decides. Every step is recorded in a hash-chained audit trail and exported as a signed audit pack.
 
 See [`docs/architecture.md`](docs/architecture.md) for how it fits together and [`docs/roadmap.md`](docs/roadmap.md) for progress.
 

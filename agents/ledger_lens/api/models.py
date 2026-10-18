@@ -11,7 +11,9 @@ from ledger_lens.shared.schemas import (
     JurisdictionCode,
     LoanRequest,
     Organisation,
+    OrgStatus,
     OrgType,
+    PlatformConfig,
     Role,
 )
 
@@ -36,6 +38,9 @@ class CaseSummary(BaseModel):
     created_at: str
     lender_org_id: str | None = None
     business_org_id: str | None = None
+    reviewer: str | None = None  # the credit reviewer the case is assigned to
+    open_requests: int = 0
+    engagements: list[str] = []  # each engagement's status
 
 
 class ExplainRequest(BaseModel):
@@ -57,9 +62,31 @@ class SendApplication(BaseModel):
     lender_org_id: str
 
 
-class ReviewRequest(BaseModel):
-    outcome: Literal["no_issues", "issues_found"]
+class AssignReviewer(BaseModel):
+    reviewer_uid: str
+
+
+class NewRequest(BaseModel):
+    addressed_to: Literal["lender", "business"]
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class AnswerRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=2000)
+
+
+class AssignEngagement(BaseModel):
+    assignee_uid: str
+
+
+class NewFinding(BaseModel):
+    severity: Literal["observation", "issue"]
     note: str = Field(min_length=1, max_length=2000)
+
+
+class EngagementReview(BaseModel):
+    approve: bool
+    note: str = Field(default="", max_length=2000)
 
 
 class Me(BaseModel):
@@ -73,9 +100,33 @@ class Me(BaseModel):
     organisations_enabled: bool
 
 
-class RegisterBusiness(BaseModel):
-    business_name: str = Field(min_length=1, max_length=120)
+class RegisterOrganisation(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    type: OrgType = OrgType.BUSINESS
     jurisdiction: JurisdictionCode | None = None
+
+
+class StatusChange(BaseModel):
+    status: OrgStatus
+
+
+class RoleChange(BaseModel):
+    role: Role
+
+
+class SettingsChange(BaseModel):
+    daily_model_calls: int | None = Field(default=None, ge=0, le=100_000)
+    self_registration: bool | None = None
+
+
+class PlatformSettings(BaseModel):
+    config: PlatformConfig
+    deployment_daily_model_calls: int
+    effective_daily_model_calls: int  # 0 means no cap
+    model_calls_today: int | None  # None when calls are not counted (offline models)
+    llm_provider: str
+    model_extract: str
+    model_reason: str
 
 
 class NewAccount(BaseModel):
@@ -96,7 +147,7 @@ class NewOrganisation(BaseModel):
 
 
 class GrantRequest(BaseModel):
-    audit_firm_id: str
+    grantee_org_id: str  # an audit firm, or the platform for a day of support access
 
 
 class GrantView(AccessGrant):
