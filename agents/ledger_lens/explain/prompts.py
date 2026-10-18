@@ -1,7 +1,7 @@
 """Prompts for borrower explanations. Only structured, already-checked facts go in:
 never raw text from uploaded documents, which could carry injected instructions."""
 
-PROMPT_VERSION = "explain-v1"
+PROMPT_VERSION = "explain-v2"
 MAX_WORDS = 180
 
 # Supported explanation languages: code -> name used in the prompt.
@@ -39,6 +39,9 @@ Rules:
 - Explain the main reasons, then what the applicant could do to improve their chances.
 - No jargon: say "the money left after expenses", not "net cash flow".
 - At most {MAX_WORDS} words.
+- Unless the language is English, also give english_text: the same explanation in
+  English, sentence for sentence, so a loan officer who cannot read the language can
+  check what the borrower is told. Translate faithfully; add nothing.
 """
 
 

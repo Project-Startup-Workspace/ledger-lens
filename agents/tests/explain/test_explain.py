@@ -96,10 +96,16 @@ def assessed_case() -> CreditFile:
 
 
 class RecordingLlm:
-    def __init__(self, reply: str = "வணக்கம். 250,000 LKR.", fail: bool = False) -> None:
+    def __init__(
+        self,
+        reply: str = "வணக்கம். 250,000 LKR.",
+        english: str = "Hello. 250,000 LKR.",
+        fail: bool = False,
+    ) -> None:
         self.prompts: list[str] = []
         self.spoken: list[str] = []
         self.reply = reply
+        self.english = english
         self.fail = fail
 
     def generate(
@@ -108,7 +114,7 @@ class RecordingLlm:
         self.prompts.append(prompt)
         if self.fail:
             raise LlmError("bad request")
-        return WireExplanation(borrower_text=self.reply)
+        return WireExplanation(borrower_text=self.reply, english_text=self.english)
 
     def speak(self, *, text: str, language: str) -> bytes:
         self.spoken.append(language)
@@ -129,8 +135,32 @@ def test_borrower_text_uses_the_model_in_the_applicant_language(online: Settings
     llm = RecordingLlm()
     explanation = agent(llm, online).explain(assessed_case())
     assert explanation.borrower_language == "ta"
-    assert explanation.audio_available and explanation.written_by.endswith("/explain-v1")
+    assert explanation.audio_available and explanation.written_by.endswith("/explain-v2")
+    assert explanation.english_text == "Hello. 250,000 LKR."
     assert "Language: Tamil" in llm.prompts[0]
+
+
+def test_an_english_explanation_carries_no_second_copy(online: Settings) -> None:
+    llm = RecordingLlm(reply="Hello. 250,000 LKR.")
+    assert agent(llm, online).explain(assessed_case(), "en").english_text is None
+
+
+def test_an_ungrounded_english_version_rejects_the_translation(online: Settings) -> None:
+    llm = RecordingLlm(english="You will get 900,000 LKR.")
+    assert agent(llm, online).explain(assessed_case()).written_by == TEMPLATE
+
+
+def test_a_saved_translation_of_the_same_facts_is_reused(online: Settings) -> None:
+    llm = RecordingLlm()
+    case = assessed_case()
+    case.translations["ta"] = agent(llm, online).explain(case)
+    assert agent(llm, online).explain(case) == case.translations["ta"]
+    assert len(llm.prompts) == 1
+
+    assert case.risk is not None
+    case.risk.recommendation = "approve"  # new facts, so a new explanation
+    agent(llm, online).explain(case)
+    assert len(llm.prompts) == 2
 
 
 def test_prompt_carries_checked_facts_but_no_personal_identifiers(online: Settings) -> None:
