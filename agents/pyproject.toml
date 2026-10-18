@@ -3,6 +3,7 @@ name = "ledger-lens"
 version = "0.1.0"
 description = "Agents and API that turn informal business evidence into an auditable credit file."
 readme = "README.md"
+license = "LicenseRef-Proprietary"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "cryptography>=45",

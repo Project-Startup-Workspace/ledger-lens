@@ -61,7 +61,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [ ] | 23 | Demo video and backup clips | P0 |
 | [x] | 24 | Submission write-up and architecture diagram | P0 |
 | [~] | 26 | Submit, then verify the submission opens correctly; tag the submitted release | P0 |
-| [ ] | — | Licence chosen and added | Decision pending |
+| [x] | — | Licence chosen and added | Proprietary, all rights reserved; evaluation-only permission for the competition |
 
 ## Decisions and changes to the plan
 
