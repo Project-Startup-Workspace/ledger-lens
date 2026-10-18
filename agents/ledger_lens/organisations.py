@@ -170,6 +170,18 @@ class Organisations:
         )
         return org
 
+    def add_admin(
+        self, who: Principal, org_id: str, *, email: str, display_name: str, password: str
+    ) -> Member:
+        """The platform admin gives an existing organisation another admin (an owner for a
+        business), e.g. when its only admin has left."""
+        self._require_platform(who)
+        org = self._d.get_org(org_id)
+        if org is None or org.type is OrgType.PLATFORM:
+            raise LookupError(org_id)
+        role = Role.OWNER if org.type is OrgType.BUSINESS else Role.ADMIN
+        return self._add(who, org, email, display_name, password, role)
+
     def set_status(self, who: Principal, org_id: str, status: OrgStatus) -> Organisation:
         """The platform admin approves, suspends or reinstates an organisation."""
         self._require_platform(who)

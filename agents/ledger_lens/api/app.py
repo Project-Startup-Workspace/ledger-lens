@@ -52,6 +52,7 @@ from ledger_lens.api.models import (
     GrantRequest,
     GrantView,
     Me,
+    NewAccount,
     NewFinding,
     NewMember,
     NewOrganisation,
@@ -277,6 +278,21 @@ def create_app(
             admin_email=body.admin.email,
             admin_name=body.admin.display_name,
             admin_password=body.admin.password,
+        )
+
+    @app.post(
+        "/organisations/{org_id}/admins",
+        tags=["organisations"],
+        dependencies=auth,
+        status_code=201,
+    )
+    def add_organisation_admin(org_id: str, body: NewAccount, who: Who) -> Member:
+        return orgs.add_admin(
+            who,
+            org_id,
+            email=body.email,
+            display_name=body.display_name,
+            password=body.password,
         )
 
     @app.post("/organisations/{org_id}/status", tags=["organisations"], dependencies=auth)
