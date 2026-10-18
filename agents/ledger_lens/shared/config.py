@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     gcp_region: str = "asia-southeast1"
     genai_location: str = "global"  # some newer models are served only from global endpoints
     model_extract: str = "gemini-3.8-flash"
-    model_reason: str = "gemini-3.1-pro"
+    model_reason: str = "gemini-3.1-pro-preview"  # the GA name is not yet served on Vertex
     model_tts: str = "gemini-3.8-flash-tts"
     tts_voice: str = "Kore"
     llm_timeout_s: float = 90.0

@@ -29,7 +29,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [x] | 16 | India rule pack | P2 | #6 |
 | [x] | 17 | AuditPulse exposed as an A2A agent | P2 | #9 |
 | [x] | 18 | Explanation agent: officer report, borrower explanation | P0 | #8 |
-| [~] | 19 | Spoken explanation with Gemini TTS | P1 | #8: code ready; needs Gemini credentials. Device voice used offline |
+| [x] | 19 | Spoken explanation with Gemini TTS | P1 | #8; verified live on Vertex (#21). Device voice used offline |
 | [ ] | 20 | Live voice interview | P2 | Cut until after submission (playbook cut line) |
 | [~] | 21 | Full flow on every demo case | P0 | Works locally on all 3 cases; deployed URL pending |
 | [~] | 22 | Final evaluation and bias check; results table | P0 | #12: bias check passes (0.97); accuracy on hand-written pages needs Gemini |
@@ -40,11 +40,11 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 
 | Status | Item | Needs |
 |---|---|---|
-| [ ] | GCP project `ledger-lens-dev`, billing with budget alert, APIs enabled | Billing account |
-| [ ] | Keyless GitHub → GCP deploys (Workload Identity Federation) | Project owner |
-| [ ] | Real Gemini extraction on hand-written notebooks; record fixtures | Vertex AI or Gemini API key |
-| [ ] | Cloud Storage buckets (evidence; audit packs with Bucket Lock), Firestore | Project |
-| [ ] | Cloud KMS Ed25519 key for signing audit packs | Project |
+| [~] | GCP project `ledger-lens-512003`, billing with budget alert, APIs enabled | Project, billing and APIs done; budget alert still to set |
+| [x] | Keyless GitHub → GCP deploys (Workload Identity Federation) | Bootstrap run; repo variables set |
+| [~] | Real Gemini extraction on hand-written notebooks; record fixtures | Synthetic Latin pages read 69/69 exactly; real hand-written pages and other scripts pending |
+| [~] | Cloud Storage buckets (evidence; audit packs with Bucket Lock), Firestore | Created with a 7-year retention policy; Bucket Lock (permanent) not yet applied |
+| [x] | Cloud KMS Ed25519 key for signing audit packs | Bootstrap run |
 | [ ] | Train the risk model in BigQuery ML and export weights | Project |
 | [ ] | RAG Engine corpus with regulator PDFs | Project, PDFs |
 | [ ] | Model Armor template on agent traffic | Project |
@@ -70,3 +70,4 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | 2026-10-12 | Audit packs signed with Ed25519 (KMS in the cloud) | A hash chain alone can be rebuilt by anyone |
 | 2026-10-12 | Live voice interview deferred | Playbook cut line; needs credentials to test |
 | 2026-10-13 | Full-codebase review before release: 29 findings fixed; Firestore and Storage tested against emulators in CI | Release gate for `main` |
+| 2026-10-18 | Reasoning model defaults to `gemini-3.1-pro-preview` | `gemini-3.1-pro` returns 404 on Vertex for this project |
