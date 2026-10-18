@@ -156,6 +156,8 @@ def test_a_saved_translation_of_the_same_facts_is_reused(online: Settings) -> No
     case.translations["ta"] = agent(llm, online).explain(case)
     assert agent(llm, online).explain(case) == case.translations["ta"]
     assert len(llm.prompts) == 1
+    online.enable_tts = False  # reused text follows the current speech setting
+    assert not agent(llm, online).explain(case).audio_available
 
     assert case.risk is not None
     case.risk.recommendation = "approve"  # new facts, so a new explanation

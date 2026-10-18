@@ -60,17 +60,21 @@ class ExplainAgent:
         digest = self._digest(facts)
         saved = case.translations.get(target)
         if saved is not None and saved.facts_digest == digest:
-            return saved
+            # Speech can be switched on or off after the text was written.
+            return saved.model_copy(update={"audio_available": self._audible(target)})
         text, english, written_by = self._borrower_text(target, facts)
         actual = target if written_by != TEMPLATE else "en"
         return Explanation(
             borrower_text=text,
             borrower_language=actual,
             english_text=english,
-            audio_available=self._can_speak and actual in prompts.TTS_LOCALES,
+            audio_available=self._audible(actual),
             written_by=written_by,
             facts_digest=digest,
         )
+
+    def _audible(self, language: str) -> bool:
+        return self._can_speak and language in prompts.TTS_LOCALES
 
     def _digest(self, facts: list[str]) -> str:
         source = [self._settings.model_reason, prompts.PROMPT_VERSION, *facts]
