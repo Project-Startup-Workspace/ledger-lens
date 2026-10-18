@@ -24,7 +24,8 @@ export function PlatformAdmin() {
       .then(([orgList, current]) => {
         setOrgs(orgList);
         setSettings(current);
-        setCap(String(current.effective_daily_model_calls));
+        // Only the first load fills the box, so a reload never overwrites what is typed.
+        setCap((typed) => typed || String(current.effective_daily_model_calls));
       })
       .catch((e: Error) => setError(e.message));
 
@@ -45,6 +46,20 @@ export function PlatformAdmin() {
   useEffect(() => {
     load();
   }, []);
+
+  async function addAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    await act(() =>
+      api.addOrganisationAdmin(String(data.get("org_id")), {
+        email: String(data.get("email")).trim(),
+        display_name: String(data.get("display_name")).trim(),
+        password: String(data.get("password")),
+      }),
+    );
+    form.reset();
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -166,6 +181,31 @@ export function PlatformAdmin() {
           </p>
         </Card>
       )}
+      <Card title="Add an admin to an organisation">
+        <form onSubmit={addAdmin} className="space-y-3">
+          <label className="block text-sm">
+            <span className="text-slate-600">Organisation</span>
+            <select
+              name="org_id"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            >
+              {orgs
+                ?.filter((o) => o.type !== "platform")
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({orgLabel(o.type)})
+                  </option>
+                ))}
+            </select>
+          </label>
+          <Field label="Email" name="email" type="email" />
+          <Field label="Name" name="display_name" required={false} />
+          <Field label="Starting password" name="password" type="password" minLength={8} />
+          <Button type="submit" disabled={busy}>
+            Add admin
+          </Button>
+        </form>
+      </Card>
       <Card title="Add a lender or audit firm">
         <form onSubmit={submit} className="space-y-3">
           <Field label="Organisation name" name="name" />
