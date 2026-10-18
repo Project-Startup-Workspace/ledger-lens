@@ -15,7 +15,9 @@ export function SiteHeader() {
     active &&
     (type === "business" ||
       (type === "lender" && ["admin", "loan_officer"].includes(me?.role ?? "")));
-  const manages = active && (me?.role === "admin" || me?.role === "owner");
+  // Teams and access need Firebase sign-in; single-lender mode has neither.
+  const manages =
+    active && me?.organisations_enabled && (me.role === "admin" || me.role === "owner");
   return (
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
