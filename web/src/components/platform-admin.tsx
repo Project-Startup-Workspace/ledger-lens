@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { orgLabel } from "@/lib/format";
 import type { Organisation, OrgStatus, OrgType, PlatformSettings } from "@/lib/types";
 
+import { CaseList } from "./case-list";
 import { Badge, Button, Card, ErrorNote, Field } from "./ui";
 
 const STATUS_TONE = { active: "green", pending: "amber", suspended: "red" } as const;
@@ -181,6 +182,11 @@ export function PlatformAdmin() {
           </p>
         </Card>
       )}
+      <CaseList
+        title="Support access"
+        demos={false}
+        empty="No organisation has granted support access. Their cases appear here, read-only, for 24 hours after they do."
+      />
       <Card title="Add an admin to an organisation">
         <form onSubmit={addAdmin} className="space-y-3">
           <label className="block text-sm">
