@@ -6,6 +6,7 @@ exactly the same logic. Every state change is saved and appended to the audit ch
 
 import contextvars
 import hashlib
+import logging
 import threading
 import weakref
 from collections.abc import Callable, Iterator
@@ -68,6 +69,7 @@ from ledger_lens.shared.storage import (
 from ledger_lens.shared.usage import metered
 
 SYSTEM = "system"
+log = logging.getLogger(__name__)
 READ_WORKERS = 4  # concurrent model calls per assessment
 
 
@@ -418,11 +420,18 @@ class Coordinator:
         settings = self._s.settings
         voice = "\n".join([settings.model_tts, settings.tts_voice, language, text])
         key = f"speech/{case_id}/{hashlib.sha256(voice.encode()).hexdigest()[:32]}.wav"
-        if (audio := self._s.blobs.find(key)) is not None:
+        # One request per audio file speaks at a time, so a double press pays once. The key
+        # is not a case id, so the case itself stays unlocked while speech is generated.
+        with self._lock_for(key):
+            if (audio := self._s.blobs.find(key)) is not None:
+                return audio
+            audio = self._s.explain.speak(text, language)
+            try:
+                self._s.blobs.put(key, audio, "audio/wav")
+            except Exception:
+                # The audio is paid for; serve it and let the next play try saving again.
+                log.warning("could not save spoken explanation", exc_info=True)
             return audio
-        audio = self._s.explain.speak(text, language)
-        self._s.blobs.put(key, audio, "audio/wav")
-        return audio
 
     def acknowledge_disclosure(
         self, case_id: str, *, blank_fields: list[str], actor: str

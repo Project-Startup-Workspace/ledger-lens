@@ -137,6 +137,9 @@ def test_firestore_call_budget_is_shared_and_never_overspent(
     with ThreadPoolExecutor(max_workers=6) as pool:
         granted = list(pool.map(take, range(20)))
     assert 0 < granted.count(True) <= 8  # contention may refuse early; never overspends
+    # Refused calls handed their slots back, so the count is exactly what was granted.
+    stored = budgets[0]._client.collection("usage").document(f"model-calls-{day}").get()
+    assert stored.get("calls") == granted.count(True)
 
     # Without contention the whole allowance is usable.
     monkeypatch.setattr(usage, "_today", lambda: f"{day}-quiet")

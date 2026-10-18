@@ -1,7 +1,8 @@
 """A daily cap on paid model calls, shared by every instance, so a leaked sign-in or a
 runaway script cannot run up an unbounded Gemini bill.
 
-The count resets at midnight UTC. Each logical call counts once; its single retry does not.
+The count resets at midnight UTC. Each logical call counts once, so with LL_LLM_RETRIES=1 a
+call that fails transiently can be billed twice.
 """
 
 import fcntl
@@ -20,8 +21,8 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ModelBudgetExceededError(LlmUnavailableError):
-    """Today's model-call budget is spent. Agents with a fallback (the template
-    explanation) use it; the rest report the limit to the caller."""
+    """Today's model-call budget is spent. Never replaced by a fallback: the officer is
+    told, so a template is not saved silently in place of the model's explanation."""
 
 
 class CallBudget(Protocol):
@@ -67,7 +68,8 @@ class FirestoreCallBudget:
     A transaction would lock one hot document against the parallel page reads. Instead
     each call increments, then reads the total back: every increment gets its own
     position in the count, so at most `limit` calls ever see a total within the limit.
-    Near the limit a call can be refused that would have fitted; it is never overspent.
+    Refused calls hand their slot back, so near the limit a call can be refused that
+    would have fitted, but the budget is never overspent.
     """
 
     def __init__(self, project: str | None, limit: int) -> None:
@@ -78,10 +80,20 @@ class FirestoreCallBudget:
         self._limit = limit
 
     def take(self) -> None:
+        from google.api_core.exceptions import GoogleAPICallError
+
         ref = self._client.collection("usage").document(f"model-calls-{_today()}")
-        ref.set({"calls": self._increment(1)}, merge=True)
-        if (ref.get().get("calls") or 0) > self._limit:
-            raise _exceeded(self._limit)
+        try:
+            ref.set({"calls": self._increment(1)}, merge=True)
+            if (ref.get().get("calls") or 0) <= self._limit:
+                return
+            # Hand the refused slot back. A granted call never returns its slot, so every
+            # grant still saw a total that included all grants before it.
+            ref.set({"calls": self._increment(-1)}, merge=True)
+        except GoogleAPICallError as exc:
+            # Fail closed: an uncounted call is an uncapped one.
+            raise LlmUnavailableError(f"could not check the model-call budget: {exc}") from exc
+        raise _exceeded(self._limit)
 
 
 class MeteredLlm:

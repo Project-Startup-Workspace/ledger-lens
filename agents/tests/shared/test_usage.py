@@ -115,3 +115,53 @@ def test_speech_is_saved_so_replays_cost_no_model_call(settings: Settings) -> No
     coordinator._s.cases.save(stored)
     assert coordinator.speech(case.case_id) != first
     assert speaker.calls == 2
+
+
+def test_concurrent_first_plays_pay_for_speech_once(settings: Settings) -> None:
+    coordinator = Coordinator(build_services(settings))
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "officer-1")
+    coordinator.assess(case.case_id, "officer-1")
+    speaker = CountingSpeaker()
+    coordinator._s = dataclasses.replace(coordinator._s, explain=speaker)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        plays = list(pool.map(lambda _: coordinator.speech(case.case_id), range(4)))
+    assert len(set(plays)) == 1
+    assert speaker.calls == 1
+
+
+def test_paid_audio_is_served_even_when_saving_it_fails(settings: Settings) -> None:
+    coordinator = Coordinator(build_services(settings))
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "officer-1")
+    coordinator.assess(case.case_id, "officer-1")
+
+    class FailingPut:
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+
+        def find(self, key: str) -> bytes | None:
+            return None
+
+        def put(self, *_: object) -> None:
+            raise OSError("bucket unavailable")
+
+    coordinator._s = dataclasses.replace(
+        coordinator._s, explain=CountingSpeaker(), blobs=FailingPut(coordinator._s.blobs)
+    )
+    assert coordinator.speech(case.case_id).startswith(b"wav:")
+
+
+def test_a_spent_budget_is_reported_not_replaced_by_the_template(
+    settings: Settings, tmp_path: Path
+) -> None:
+    from ledger_lens.explain.agent import ExplainAgent
+    from ledger_lens.shared.safety import HeuristicScreen
+
+    coordinator = Coordinator(build_services(settings))
+    case = open_demo_case(coordinator, "synthetic-grocer-kandy", "officer-1")
+    case = coordinator.assess(case.case_id, "officer-1")
+    spent = MeteredLlm(
+        OfflineLlm(settings.fixtures_dir), LocalCallBudget(tmp_path / "calls.json", limit=0)
+    )
+    with pytest.raises(ModelBudgetExceededError):
+        ExplainAgent(spent, HeuristicScreen(), settings).explain(case, "si")

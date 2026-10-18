@@ -15,6 +15,7 @@ from ledger_lens.shared.config import LlmProvider, Settings
 from ledger_lens.shared.llm import LlmClient, LlmError, LlmUnavailableError
 from ledger_lens.shared.safety import SafetyScreen
 from ledger_lens.shared.schemas import CreditFile, Explanation, FindingStatus
+from ledger_lens.shared.usage import ModelBudgetExceededError
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +77,8 @@ class ExplainAgent:
                 prompt=prompts.borrower_prompt(language, "\n".join(f"- {f}" for f in facts)),
                 schema=WireExplanation,
             )
+        except ModelBudgetExceededError:
+            raise  # the officer must learn the limit is reached, not get English silently
         except LlmUnavailableError:
             return template_text(facts), TEMPLATE
         except LlmError:
