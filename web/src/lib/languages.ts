@@ -6,4 +6,8 @@ export const LANGUAGES: Record<string, string> = {
   id: "Bahasa Indonesia",
   vi: "Tiếng Việt (Vietnamese)",
   hi: "हिन्दी (Hindi)",
+  ms: "Bahasa Melayu (Malay)",
+  th: "ภาษาไทย (Thai)",
+  tl: "Filipino",
+  zh: "简体中文 (Chinese)",
 };
