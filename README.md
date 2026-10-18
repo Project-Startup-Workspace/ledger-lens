@@ -53,3 +53,7 @@ Or run everything in containers: `docker compose up --build`.
 `main` holds released states; work happens on feature branches from `dev`, merged by pull request. Run `make check` before pushing. `make emulators && make test-integration` tests the Firestore and Cloud Storage adapters against their emulators in Docker. CI runs all of these, plus image builds and a secret scan.
 
 Status: competition build. The risk model is illustrative (synthetic training data), and rule packs are drafts pending legal review.
+
+## Licence
+
+Copyright (c) 2026 the FireHackers team. All rights reserved. The code is public only for judging in the AI Builder Cup; see [LICENSE](LICENSE) for the evaluation permission and its limits.
