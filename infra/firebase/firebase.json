@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "public": "public",
+    "rewrites": [
+      {
+        "source": "**",
+        "run": { "serviceId": "ledger-lens-web", "region": "asia-southeast1" }
+      }
+    ]
+  }
+}

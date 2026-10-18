@@ -40,7 +40,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 
 | Status | Item | Needs |
 |---|---|---|
-| [~] | GCP project `ledger-lens-512003`, billing with budget alert, APIs enabled | Project, billing and APIs done; budget alert still to set |
+| [x] | GCP project `ledger-lens-512003`, billing with budget alert, APIs enabled | Budget alert at $8 |
 | [x] | Keyless GitHub → GCP deploys (Workload Identity Federation) | Bootstrap run; repo variables set |
 | [~] | Real Gemini extraction on hand-written notebooks; record fixtures | Synthetic Latin pages read 69/69 exactly; real hand-written pages and other scripts pending |
 | [~] | Cloud Storage buckets (evidence; audit packs with Bucket Lock), Firestore | Created with a 7-year retention policy; Bucket Lock (permanent) not yet applied |
@@ -49,7 +49,8 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [ ] | RAG Engine corpus with regulator PDFs | Project, PDFs |
 | [ ] | Model Armor template on agent traffic | Project |
 | [~] | Deploy API, web and A2A to Cloud Run (`dev`), agents to Agent Runtime | Cloud Run live from `main` (#16): Firestore, Cloud Storage, KMS-signed packs verified; Agent Runtime not deployed |
-| [x] | Cost limits: instance caps, a shared daily Gemini call budget, saved speech | #22 |
+| [x] | Cost limits: instance caps, a shared daily Gemini call budget, saved speech | #22; saved translations #33 |
+| [x] | Firebase Hosting as the public link, in front of the web service | `ledger-lens-512003.web.app` |
 | [ ] | `demo` environment promoted and frozen (Sat 17) | Deployed `dev` |
 
 ## Phase 3: submission (Sat 17 – Sun 18 October 2026)

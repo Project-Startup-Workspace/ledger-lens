@@ -25,7 +25,7 @@ Ledger Lens is five agents and one human decision. Gemini reads, reasons and exp
 | Consistency agent | `agents/ledger_lens/consistency` | Weekly notebook vs statement comparison; flags with officer questions | none |
 | Risk agent | `agents/ledger_lens/risk` | Probability of default, grade, reason codes, path to approval, model card | logistic regression (BigQuery ML or local) |
 | AuditPulse | `agents/ledger_lens/auditpulse` | Per-country rule packs, citations, sanctions screening, Key Fact Statement | none for pass/fail; RAG Engine for excerpts |
-| Explanation agent | `agents/ledger_lens/explain` | Officer report; borrower explanation in their language; speech | Gemini Pro, Gemini TTS |
+| Explanation agent | `agents/ledger_lens/explain` | Officer report; borrower explanation in their language with an English version for the officer, kept per language; speech | Gemini Pro, Gemini TTS |
 | Audit trail | `agents/ledger_lens/audit_trail` | Hash-chained events; signed, verifiable audit packs | none |
 | Coordinator | `agents/ledger_lens/coordinator.py` | Runs the stages, enforces case rules, saves and audits every step | — |
 | API | `agents/ledger_lens/api` | HTTP for the web app (OpenAPI at `/docs`) | — |
@@ -56,5 +56,6 @@ Agents exchange only the Pydantic contracts in `agents/ledger_lens/shared/schema
 | Signing key | generated PEM in `.data/keys` | Cloud KMS Ed25519 |
 | Safety screen | heuristics | Model Armor + heuristics |
 | Citations | rule-pack summaries | RAG Engine passages |
+| Serving | `next dev` and `uvicorn` | Firebase Hosting → Cloud Run (web, API, A2A) |
 
 Decisions behind this design are in `docs/adr/`.
