@@ -51,6 +51,7 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | [~] | Deploy API, web and A2A to Cloud Run (`dev`), agents to Agent Runtime | Cloud Run live from `main` (#16): Firestore, Cloud Storage, KMS-signed packs verified; Agent Runtime not deployed |
 | [x] | Cost limits: instance caps, a shared daily Gemini call budget, saved speech | #22; saved translations #33 |
 | [x] | Firebase Hosting as the public link, in front of the web service | `ledger-lens-512003.web.app` |
+| [x] | Firebase Authentication with organisations and roles: platform, lenders, audit firms, businesses | Roles, approvals, grants, engagements and requests in the API and web app; `infra/gcp/firebase-auth.sh` |
 | [ ] | `demo` environment promoted and frozen (Sat 17) | Deployed `dev` |
 
 ## Phase 3: submission (Sat 17 – Sun 18 October 2026)
@@ -74,3 +75,5 @@ Source plans: the Engineering Playbook (issues 1–26) and the Product Blueprint
 | 2026-10-13 | Full-codebase review before release: 29 findings fixed; Firestore and Storage tested against emulators in CI | Release gate for `main` |
 | 2026-10-18 | Reasoning model defaults to `gemini-3.1-pro-preview` | `gemini-3.1-pro` returns 404 on Vertex for this project |
 | 2026-10-18 | Daily cap on Gemini calls (300 by default) and Cloud Run instance caps before the first deploy | Bound the bill if a sign-in leaks or a script runs away |
+| 2026-10-18 | v0.1.0 frozen on `release/0.1.0`; scope widened to one platform for businesses, lenders and auditors | Owners, auditors and lenders share the same evidence; Firebase Authentication carries the roles |
+| 2026-10-18 | Credit decisions by an assigned credit reviewer; audit findings approved by an audit reviewer | Four eyes on every decision and report |

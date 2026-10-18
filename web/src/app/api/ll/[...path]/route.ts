@@ -1,11 +1,12 @@
 /**
  * Server-side proxy to the Ledger Lens API.
  *
- * The browser only ever talks to this app. The API token and the signed-in officer are
+ * The browser only ever talks to this app. The API token and the signed-in person are
  * added here, on the server, so neither can be read or forged from the browser.
  */
 import type { NextRequest } from "next/server";
 
+import { SESSION_COOKIE } from "@/lib/session";
 import { OFFICER_HEADER } from "@/proxy";
 
 const API_URL = process.env.LL_API_URL ?? "http://localhost:8080";
@@ -27,6 +28,10 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/ll/[...path
     const officer = request.headers.get(OFFICER_HEADER) ?? process.env.LL_OFFICER_ID;
     if (officer) headers.set("x-officer-id", officer);
   }
+
+  // Firebase sign-in: the API verifies the ID token itself and applies the person's role.
+  const idToken = request.cookies.get(SESSION_COOKIE)?.value;
+  if (process.env.LL_FIREBASE_PROJECT && idToken) headers.set("x-ll-id-token", idToken);
 
   const hasBody = !["GET", "HEAD"].includes(request.method);
   const response = await fetch(target, {

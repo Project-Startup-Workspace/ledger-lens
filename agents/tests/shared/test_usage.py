@@ -95,7 +95,9 @@ def test_api_reports_a_spent_budget_as_429(
         raise ModelBudgetExceededError("today's limit of 300 model calls is reached")
 
     monkeypatch.setattr(Coordinator, "speech", spent)
-    response = TestClient(create_app(settings)).get("/cases/case_x/explanation/audio")
+    client = TestClient(create_app(settings))
+    case_id = client.post("/demo-cases/synthetic-grocer-kandy").json()["case_id"]
+    response = client.get(f"/cases/{case_id}/explanation/audio")
     assert response.status_code == 429
     assert "limit of 300" in response.json()["detail"]
 

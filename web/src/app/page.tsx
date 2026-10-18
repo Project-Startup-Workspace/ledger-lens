@@ -1,5 +1,5 @@
-import { CaseList } from "@/components/case-list";
+import { Home } from "@/components/home";
 
-export default function Home() {
-  return <CaseList />;
+export default function HomePage() {
+  return <Home />;
 }

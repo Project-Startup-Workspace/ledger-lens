@@ -1,6 +1,6 @@
 # Architecture
 
-Ledger Lens is five agents and one human decision. Gemini reads, reasons and explains; deterministic code calculates and decides pass/fail. The officer makes every credit decision.
+Ledger Lens is one platform for the three parties to a microbusiness's finances: the business, its lender and its auditor. Five agents and one human decision sit underneath: Gemini reads, reasons and explains; deterministic code calculates and decides pass/fail; a credit reviewer makes every credit decision.
 
 ```
  phone camera / CSV                                                       officer
@@ -31,7 +31,26 @@ Ledger Lens is five agents and one human decision. Gemini reads, reasons and exp
 | API | `agents/ledger_lens/api` | HTTP for the web app (OpenAPI at `/docs`) | — |
 | ADK workflow | `agents/ledger_lens/adk_app.py` | The same stages as an ADK `Workflow` for Agent Runtime | — |
 | AuditPulse A2A | `agents/ledger_lens/a2a_server.py` | AuditPulse alone, as an Agent2Agent service for other lenders | — |
-| Web app | `web/` | Mobile-first officer app; server-side proxy holds the API token | — |
+| Organisations | `agents/ledger_lens/organisations.py`, `access.py` | Organisations, members, roles, access grants, platform settings; every case permission in one place | — |
+| Web app | `web/` | Mobile-first app with a view per role; Firebase sign-in; server-side proxy holds the API token | — |
+
+## Organisations and roles
+
+People sign in with Firebase Authentication. The web app checks the ID token on every request and the API checks it again, then applies the person's role from the directory in Firestore (a copy rides in the token's custom claims for the UI).
+
+| Organisation | Role | May |
+|---|---|---|
+| Platform | Platform admin | Approve, suspend and add organisations; change platform settings (daily Gemini cap, self-registration); read a case only under a 24-hour support grant |
+| Lender | Admin | Manage staff and roles; grant audit firms and support access; every lender task |
+| Lender | Loan officer | Open and prepare applications, ask the business for evidence, send a case to a credit reviewer |
+| Lender | Credit reviewer | Decide the applications assigned to them |
+| Audit firm | Admin | Manage staff; assign engagements on cases its firm was granted |
+| Audit firm | Audit officer | Work assigned engagements: request evidence, record findings, submit for review |
+| Audit firm | Audit reviewer | Approve findings as the final report, or return them |
+| Business | Owner | The business profile; prepare and send applications; acknowledge loan terms; grant access |
+| Business | Accountant | Upload records and answer requests; never shares |
+
+Cases carry the lender and the business they belong to. An owner's application is private until the owner sends it to one lender. Audit firms see the cases of organisations that granted them access, only while the grant stands. Organisation changes are kept in each organisation's own hash chain, beside the case chains.
 
 ## Data flow and contracts
 
@@ -43,7 +62,8 @@ Agents exchange only the Pydantic contracts in `agents/ledger_lens/shared/schema
 - **Fraud:** the consistency check compares the notebook with a statement the applicant cannot easily fake.
 - **Prompt injection:** text read from documents is screened (heuristics, plus Model Armor in the cloud); flagged text is removed. Explanation prompts receive only checked facts, and model output is rejected if it introduces numbers not in those facts.
 - **Personal data:** masked in logs and audit events; consent is required before evidence upload.
-- **Accountability:** officers decide, with a reason; overrides are derived and recorded; identity comes from sign-in, never from the request body.
+- **Accountability:** an assigned credit reviewer decides, with a reason, apart from the loan officer who prepared the case; audit findings are approved by someone other than their author; overrides are derived and recorded; identity comes from a verified sign-in token, never from the request body.
+- **Least privilege:** each role sees and changes only what the table above allows; a case someone may not see is reported as missing. The platform admin sees no case unless an organisation grants time-limited support access.
 - **Audit:** every step appends to a hash chain; exports are signed with the lender's key and verifiable offline.
 
 ## Environments
@@ -57,5 +77,6 @@ Agents exchange only the Pydantic contracts in `agents/ledger_lens/shared/schema
 | Safety screen | heuristics | Model Armor + heuristics |
 | Citations | rule-pack summaries | RAG Engine passages |
 | Serving | `next dev` and `uvicorn` | Firebase Hosting → Cloud Run (web, API, A2A) |
+| Sign-in | single lender, no sign-in (or the Firebase Auth emulator) | Firebase Authentication; directory in Firestore |
 
 Decisions behind this design are in `docs/adr/`.

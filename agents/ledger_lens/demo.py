@@ -14,7 +14,9 @@ def demo_cases() -> list[str]:
     return sorted(p.parent.name for p in DEMO_DIR.glob("synthetic-*/case.json"))
 
 
-def open_demo_case(coordinator: Coordinator, slug: str, actor: str) -> CreditFile:
+def open_demo_case(
+    coordinator: Coordinator, slug: str, actor: str, lender_org_id: str | None = None
+) -> CreditFile:
     """Create the case and upload its notebook pages and statement, ready to assess."""
     if slug not in demo_cases():
         raise KeyError(slug)
@@ -26,6 +28,7 @@ def open_demo_case(coordinator: Coordinator, slug: str, actor: str) -> CreditFil
         consent=Consent(given=True, method="digital"),
         jurisdiction=spec["jurisdiction"],
         actor=actor,
+        lender_org_id=lender_org_id,
     )
     files = [(p, EvidenceKind.NOTEBOOK) for p in sorted(folder.glob("notebook-p*.png"))]
     if (wallet := folder / "wallet-statement.csv").exists():

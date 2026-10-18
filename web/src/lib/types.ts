@@ -50,6 +50,8 @@ export interface WeekTotal {
 export interface CashFlowSummary {
   currency: string;
   weeks: WeekTotal[];
+  total_sales: number;
+  total_expenses: number;
   avg_weekly_sales: number;
   avg_weekly_net: number;
   sales_volatility: number;
@@ -175,6 +177,11 @@ export interface CreditFile {
   explanation: Explanation | null;
   disclosure: Disclosure | null;
   decision: OfficerDecision | null;
+  lender_org_id: string | null;
+  business_org_id: string | null;
+  credit_review: CreditReview | null;
+  requests: EvidenceRequest[];
+  engagements: Engagement[];
 }
 
 export interface CaseSummary {
@@ -187,6 +194,11 @@ export interface CaseSummary {
   grade: string | null;
   recommendation: string | null;
   created_at: string;
+  lender_org_id: string | null;
+  business_org_id: string | null;
+  reviewer: string | null;
+  open_requests: number;
+  engagements: Engagement["status"][];
 }
 
 export interface Jurisdiction {
@@ -206,4 +218,111 @@ export interface AuditEvent {
 export interface AuditLog {
   verification: { valid: boolean; events: number; error: string | null };
   events: AuditEvent[];
+}
+
+export type OrgType = "platform" | "lender" | "audit_firm" | "business";
+export type Role =
+  | "platform_admin"
+  | "admin"
+  | "loan_officer"
+  | "credit_reviewer"
+  | "audit_officer"
+  | "audit_reviewer"
+  | "owner"
+  | "accountant";
+export type OrgStatus = "active" | "pending" | "suspended";
+
+export interface Organisation {
+  id: string;
+  name: string;
+  type: OrgType;
+  jurisdiction: string | null;
+  status: OrgStatus;
+}
+
+export interface Me {
+  uid: string;
+  email: string;
+  name: string;
+  org: Organisation | null;
+  role: Role | null;
+  organisations_enabled: boolean;
+}
+
+export interface Member {
+  uid: string;
+  email: string;
+  display_name: string;
+  org_id: string;
+  role: Role;
+  disabled: boolean;
+}
+
+export interface AccessGrant {
+  id: string;
+  grantor_org_id: string;
+  grantee_org_id: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_at: string | null;
+  grantor_name: string;
+  grantee_name: string;
+  expires_at: string | null;
+}
+
+export interface CreditReview {
+  reviewer_uid: string;
+  reviewer: string;
+  requested_by: string;
+  requested_at: string;
+}
+
+export interface EvidenceRequest {
+  id: string;
+  from_org_id: string;
+  requested_by: string;
+  addressed_to: "lender" | "business";
+  message: string;
+  created_at: string;
+  answer: string | null;
+  answered_by: string | null;
+  answered_at: string | null;
+}
+
+export interface AuditFinding {
+  id: string;
+  author: string;
+  severity: "observation" | "issue";
+  note: string;
+  snapshot: string;
+  recorded_at: string;
+}
+
+export interface Engagement {
+  id: string;
+  audit_firm_id: string;
+  assignee_uid: string;
+  assignee: string;
+  assigned_by: string;
+  assigned_at: string;
+  status: "open" | "submitted" | "approved" | "returned";
+  findings: AuditFinding[];
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  report_snapshot: string | null;
+}
+
+export interface PlatformSettings {
+  config: {
+    daily_model_calls: number | null;
+    self_registration: boolean;
+    updated_by: string | null;
+  };
+  deployment_daily_model_calls: number;
+  effective_daily_model_calls: number;
+  model_calls_today: number | null;
+  llm_provider: string;
+  model_extract: string;
+  model_reason: string;
 }

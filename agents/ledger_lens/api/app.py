@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.request
 from collections.abc import Callable
+from datetime import datetime
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -29,13 +30,40 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from ledger_lens.access import (
+    AccessDeniedError,
+    Action,
+    Principal,
+    allowed,
+    firm_engagements,
+    my_engagement,
+    require,
+)
 from ledger_lens.api.models import (
     AcknowledgeDisclosure,
+    AnswerRequest,
+    AssignEngagement,
+    AssignReviewer,
     CaseSummary,
     CreateCase,
     DecisionRequest,
+    EngagementReview,
     ExplainRequest,
+    GrantRequest,
+    GrantView,
+    Me,
+    NewFinding,
+    NewMember,
+    NewOrganisation,
+    NewRequest,
+    PlatformSettings,
+    RegisterOrganisation,
+    RoleChange,
+    SendApplication,
+    SettingsChange,
+    StatusChange,
 )
+from ledger_lens.audit_trail.chain import AuditEvent, verify_chain
 from ledger_lens.audit_trail.pack import PackVerification, verify_pack
 from ledger_lens.auditpulse.agent import InvalidJurisdictionError
 from ledger_lens.coordinator import (
@@ -46,16 +74,31 @@ from ledger_lens.coordinator import (
 )
 from ledger_lens.demo import demo_cases, open_demo_case
 from ledger_lens.explain.agent import UnsupportedLanguageError
+from ledger_lens.organisations import Organisations, SetupError
 from ledger_lens.shared.config import Settings, get_settings
+from ledger_lens.shared.directory import build_directory
+from ledger_lens.shared.identity import (
+    AccountExistsError,
+    IdentityProvider,
+    InvalidTokenError,
+    build_identity,
+)
 from ledger_lens.shared.llm import LlmError, LlmUnavailableError
 from ledger_lens.shared.logs import configure_logging
 from ledger_lens.shared.schemas import (
+    AccessGrant,
     ComplianceReport,
     Consent,
     CreditFile,
     EvidenceDocument,
     EvidenceKind,
     Explanation,
+    Member,
+    Organisation,
+    OrgStatus,
+    OrgType,
+    PlatformConfig,
+    Role,
 )
 from ledger_lens.shared.storage import ConcurrentUpdateError
 from ledger_lens.shared.usage import ModelBudgetExceededError
@@ -75,15 +118,34 @@ IAP_JWT_HEADER = "x-goog-iap-jwt-assertion"
 IAP_KEYS_URL = "https://www.gstatic.com/iap/verify/public_key"  # PEM, by key id
 IAP_ISSUER = "https://cloud.google.com/iap"
 OFFICER_HEADER = "x-officer-id"
+ID_TOKEN_HEADER = "x-ll-id-token"  # noqa: S105 - a header name; the web app passes it on
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, identity: IdentityProvider | None = None
+) -> FastAPI:
+    """`identity` replaces the one built from settings (tests pass a fake)."""
     settings = settings or get_settings()
     configure_logging(settings.log_level)
-    coordinator = Coordinator(build_services(settings))
+    built: list[Organisations] = []
+
+    def daily_limit() -> int:
+        """The platform admin's cap when set, else the deployment's; read on every call."""
+        override = built[0].config().daily_model_calls if built and built[0].enabled else None
+        return settings.daily_model_calls if override is None else override
+
+    services = build_services(settings, daily_limit)
+    coordinator = Coordinator(services)
+    orgs = Organisations(
+        build_directory(settings),
+        identity or build_identity(settings),
+        services.audit,
+        settings.default_lender_org,
+    )
+    built.append(orgs)
     app = FastAPI(
         title="Ledger Lens API",
-        version="0.1.0",
+        version="0.2.0",
         description="Turns informal business evidence into an auditable credit file.",
     )
     app.add_middleware(
@@ -99,7 +161,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return coordinator
 
     def officer(request: Request) -> str:
-        """Who is acting, from a trusted source only; never from the request body.
+        """Single-lender sign-in: who is acting, from a trusted source only.
 
         1. An IAP assertion, verified against Google's keys, when the API itself sits
            behind Identity-Aware Proxy (LL_API_IAP_AUDIENCE).
@@ -118,8 +180,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(401, "Identity-Aware Proxy sign-in required")
         return ANONYMOUS_OFFICER
 
+    def principal(request: Request) -> Principal:
+        """The signed-in person: from a Firebase ID token, verified here whoever passed it
+        on, when organisations are enabled; otherwise an officer of the default lender."""
+        if not orgs.enabled:
+            return orgs.single_lender_principal(officer(request))
+        token = request.headers.get(ID_TOKEN_HEADER)
+        if not token:
+            raise HTTPException(401, "sign in first")
+        assert orgs.identity is not None
+        try:
+            return orgs.principal(orgs.identity.verify(token))
+        except InvalidTokenError:
+            raise HTTPException(401, "your sign-in has expired; sign in again") from None
+
     Coord = Annotated[Coordinator, Depends(coord)]  # noqa: N806 - a type alias
-    Officer = Annotated[str, Depends(officer)]  # noqa: N806 - a type alias
+    Who = Annotated[Principal, Depends(principal)]  # noqa: N806 - a type alias
+
+    def case_for(c: Coordinator, case_id: str, who: Principal, action: Action) -> CreditFile:
+        """The case, if `who` may take `action` on it. A case they may not even see is
+        reported as missing, so its existence is not revealed."""
+        case = c.get(case_id)
+        lender, granted = orgs.default_lender, orgs.granted_by(who)
+        if not allowed(who, Action.VIEW, case, default_lender=lender, granted_by=granted):
+            raise CaseNotFoundError(case_id)
+        require(who, action, case, default_lender=lender, granted_by=granted)
+        return case
+
+    def lender_id(who: Principal) -> str:
+        """The lender of someone who may open cases there: a loan officer or the admin."""
+        if who.org_type is not OrgType.LENDER:
+            raise AccessDeniedError("only a lender's staff may do this")
+        if not who.has(Role.ADMIN, Role.LOAN_OFFICER):
+            raise AccessDeniedError("loan officers open applications")
+        return who.org_id()
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
@@ -134,38 +228,219 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return demo_cases()
 
     @app.post("/demo-cases/{slug}", tags=["demo"], dependencies=auth, status_code=201)
-    def open_demo(slug: str, c: Coord, who: Officer) -> CreditFile:
+    def open_demo(slug: str, c: Coord, who: Who) -> CreditFile:
+        lender = lender_id(who)
         try:
-            return open_demo_case(c, slug, who)
+            return open_demo_case(c, slug, who.actor, lender_org_id=lender)
         except KeyError:
             raise HTTPException(404, f"no demo case '{slug}'") from None
 
+    # --- Signed-in person and organisations -------------------------------------------
+
+    @app.get("/me", tags=["organisations"], dependencies=auth)
+    def me(who: Who) -> Me:
+        return Me(
+            uid=who.uid,
+            email=who.email,
+            name=who.name,
+            org=who.org,
+            role=who.role,
+            organisations_enabled=orgs.enabled,
+        )
+
+    @app.post("/me/organisation", tags=["organisations"], dependencies=auth, status_code=201)
+    def register_organisation(body: RegisterOrganisation, who: Who) -> Me:
+        """A business starts at once; a lender or audit firm waits for approval."""
+        joined = orgs.register(
+            who, name=body.name, org_type=body.type, jurisdiction=body.jurisdiction
+        )
+        return Me(
+            uid=joined.uid,
+            email=joined.email,
+            name=joined.name,
+            org=joined.org,
+            role=joined.role,
+            organisations_enabled=True,
+        )
+
+    @app.get("/organisations", tags=["organisations"], dependencies=auth)
+    def list_organisations(who: Who, type: OrgType | None = None) -> list[Organisation]:
+        return orgs.organisations(who, type)
+
+    @app.post("/organisations", tags=["organisations"], dependencies=auth, status_code=201)
+    def create_organisation(body: NewOrganisation, who: Who) -> Organisation:
+        return orgs.create_organisation(
+            who,
+            name=body.name,
+            org_type=body.type,
+            jurisdiction=body.jurisdiction,
+            admin_email=body.admin.email,
+            admin_name=body.admin.display_name,
+            admin_password=body.admin.password,
+        )
+
+    @app.post("/organisations/{org_id}/status", tags=["organisations"], dependencies=auth)
+    def set_organisation_status(org_id: str, body: StatusChange, who: Who) -> Organisation:
+        return orgs.set_status(who, org_id, body.status)
+
+    @app.get("/platform/settings", tags=["platform"], dependencies=auth)
+    def platform_settings(who: Who) -> PlatformSettings:
+        if who.role is not Role.PLATFORM_ADMIN:
+            raise AccessDeniedError("only the platform admin may do this")
+        return _platform_settings(orgs.config())
+
+    @app.post("/platform/settings", tags=["platform"], dependencies=auth)
+    def update_platform_settings(body: SettingsChange, who: Who) -> PlatformSettings:
+        config = orgs.update_config(who, body.model_dump(exclude_unset=True))
+        return _platform_settings(config)
+
+    def _platform_settings(config: PlatformConfig) -> PlatformSettings:
+        budget = services.budget
+        return PlatformSettings(
+            config=config,
+            deployment_daily_model_calls=settings.daily_model_calls,
+            effective_daily_model_calls=daily_limit(),
+            model_calls_today=budget.used() if budget else None,
+            llm_provider=settings.llm_provider.value,
+            model_extract=settings.model_extract,
+            model_reason=settings.model_reason,
+        )
+
+    @app.get("/colleagues", tags=["organisations"], dependencies=auth)
+    def colleagues(who: Who, role: Role | None = None) -> list[Member]:
+        """Active members of your organisation, e.g. the credit reviewers or audit officers
+        a case can be assigned to."""
+        return orgs.colleagues(who, role)
+
+    @app.get("/members", tags=["organisations"], dependencies=auth)
+    def list_members(who: Who) -> list[Member]:
+        return orgs.members(who)
+
+    @app.post("/members", tags=["organisations"], dependencies=auth, status_code=201)
+    def add_member(body: NewMember, who: Who) -> Member:
+        return orgs.add_member(
+            who,
+            email=body.email,
+            display_name=body.display_name,
+            password=body.password,
+            role=body.role,
+        )
+
+    @app.post("/members/{uid}/role", tags=["organisations"], dependencies=auth)
+    def change_role(uid: str, body: RoleChange, who: Who) -> Member:
+        return orgs.change_role(who, uid, body.role)
+
+    @app.post("/members/{uid}/remove", tags=["organisations"], dependencies=auth)
+    def remove_member(uid: str, who: Who) -> Member:
+        return orgs.remove_member(who, uid)
+
+    @app.get("/grants", tags=["organisations"], dependencies=auth)
+    def list_grants(who: Who) -> list[GrantView]:
+        def name(org_id: str) -> str:
+            org = orgs.organisation(org_id)
+            return org.name if org else org_id
+
+        return [
+            GrantView(
+                **g.model_dump(),
+                grantor_name=name(g.grantor_org_id),
+                grantee_name=name(g.grantee_org_id),
+            )
+            for g in orgs.grants(who)
+        ]
+
+    @app.post("/grants", tags=["organisations"], dependencies=auth, status_code=201)
+    def grant(body: GrantRequest, who: Who) -> AccessGrant:
+        return orgs.grant(who, body.grantee_org_id)
+
+    @app.post("/grants/{grant_id}/revoke", tags=["organisations"], dependencies=auth)
+    def revoke(grant_id: str, who: Who) -> AccessGrant:
+        return orgs.revoke(who, grant_id)
+
+    @app.get("/organisation/audit", tags=["organisations"], dependencies=auth)
+    def organisation_audit(who: Who) -> dict[str, Any]:
+        events = orgs.events(who)
+        return {
+            "verification": verify_chain(
+                [AuditEvent.model_validate(e) for e in events]
+            ).model_dump(),
+            "events": events,
+        }
+
+    # --- Cases ------------------------------------------------------------------------
+
     @app.post("/cases", tags=["cases"], dependencies=auth, status_code=201)
-    def create_case(body: CreateCase, c: Coord, who: Officer) -> CreditFile:
+    def create_case(body: CreateCase, c: Coord, who: Who) -> CreditFile:
+        """A lender's officer opens a case; a business owner opens their own application,
+        which stays private to them until they send it to a lender."""
+        owner = who.org_type is OrgType.BUSINESS
+        if not owner:
+            lender_id(who)
         return c.create_case(
             applicant=body.applicant,
             loan=body.loan,
             consent=Consent(given=body.consent_given, method=body.consent_method),
             jurisdiction=body.jurisdiction,
-            actor=who,
+            actor=who.actor,
+            lender_org_id=None if owner else who.org_id(),
+            business_org_id=who.org_id() if owner else None,
         )
 
     @app.get("/cases", tags=["cases"], dependencies=auth)
-    def list_cases(c: Coord, limit: Annotated[int, Query(ge=1)] = 50) -> list[CaseSummary]:
-        return [_summary(case) for case in c.list_cases(min(limit, 200))]  # capped, not refused
+    def list_cases(
+        c: Coord, who: Who, limit: Annotated[int, Query(ge=1)] = 50
+    ) -> list[CaseSummary]:
+        limit = min(limit, 200)  # capped, not refused
+        if not orgs.enabled:
+            cases = c.list_cases(limit)
+        elif who.org_type is OrgType.LENDER:
+            cases = c.list_cases_for("lender_org_id", {who.org_id()}, limit)
+        elif who.org_type is OrgType.BUSINESS:
+            cases = c.list_cases_for("business_org_id", {who.org_id()}, limit)
+        elif who.org_type in (OrgType.AUDIT_FIRM, OrgType.PLATFORM):
+            # Cases of the organisations that granted access, then only those this
+            # person may see: an audit officer sees the engagements assigned to them.
+            granted = orgs.granted_by(who)
+            found = {
+                case.case_id: case
+                for field in ("lender_org_id", "business_org_id")
+                for case in c.list_cases_for(field, granted, 200)
+                if allowed(
+                    who,
+                    Action.VIEW,
+                    case,
+                    default_lender=orgs.default_lender,
+                    granted_by=granted,
+                )
+            }
+            cases = sorted(found.values(), key=_recency, reverse=True)[:limit]
+        else:
+            raise AccessDeniedError("your organisation does not hold cases")
+        return [_summary(case) for case in cases]
 
     @app.get("/cases/{case_id}", tags=["cases"], dependencies=auth)
-    def get_case(case_id: str, c: Coord) -> CreditFile:
-        return c.get(case_id)
+    def get_case(case_id: str, c: Coord, who: Who) -> CreditFile:
+        return case_for(c, case_id, who, Action.VIEW)
+
+    @app.post("/cases/{case_id}/send", tags=["cases"], dependencies=auth)
+    def send_application(case_id: str, body: SendApplication, c: Coord, who: Who) -> CreditFile:
+        case_for(c, case_id, who, Action.SEND)
+        lender = orgs.organisation(body.lender_org_id)
+        if lender is None or lender.type is not OrgType.LENDER:
+            raise SetupError("applications go to lenders only")
+        if lender.status is not OrgStatus.ACTIVE:
+            raise SetupError(f"{lender.name} is not accepting applications")
+        return c.send_application(case_id, lender.id, who.actor)
 
     @app.post("/cases/{case_id}/evidence", tags=["evidence"], dependencies=auth, status_code=201)
     def upload_evidence(
         case_id: str,
         c: Coord,
-        who: Officer,
+        who: Who,
         kind: Annotated[EvidenceKind, Form()],
         file: Annotated[UploadFile, File()],
     ) -> EvidenceDocument:
+        case_for(c, case_id, who, Action.UPLOAD)
         content_type = (file.content_type or "").split(";")[0].strip().lower()
         if content_type in CSV_ALIASES and (file.filename or "").lower().endswith(".csv"):
             content_type = "text/csv"
@@ -182,46 +457,143 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             filename=file.filename or "upload",
             content_type=content_type,
             data=data,
-            actor=who,
+            actor=who.actor,
         )
 
     @app.get("/cases/{case_id}/evidence/{evidence_id}/file", tags=["evidence"], dependencies=auth)
-    def evidence_file(case_id: str, evidence_id: str, c: Coord) -> Response:
+    def evidence_file(case_id: str, evidence_id: str, c: Coord, who: Who) -> Response:
+        case_for(c, case_id, who, Action.VIEW)
         data, content_type = c.evidence_file(case_id, evidence_id)
         return Response(data, media_type=content_type, headers={"Cache-Control": "private"})
 
     @app.post("/cases/{case_id}/assess", tags=["assessment"], dependencies=auth)
-    def assess(case_id: str, c: Coord, who: Officer) -> CreditFile:
-        return c.assess(case_id, who)
+    def assess(case_id: str, c: Coord, who: Who) -> CreditFile:
+        case_for(c, case_id, who, Action.PREPARE)
+        return c.assess(case_id, who.actor)
 
     @app.get("/cases/{case_id}/compliance", tags=["assessment"], dependencies=auth)
-    def compliance(case_id: str, jurisdiction: str, c: Coord) -> ComplianceReport:
+    def compliance(case_id: str, jurisdiction: str, c: Coord, who: Who) -> ComplianceReport:
+        case_for(c, case_id, who, Action.VIEW)
         return c.compliance_view(case_id, jurisdiction)
 
     @app.post("/cases/{case_id}/explanation", tags=["assessment"], dependencies=auth)
-    def explain(case_id: str, body: ExplainRequest, c: Coord, who: Officer) -> Explanation:
-        return c.explain_in(case_id, body.language, who)
+    def explain(case_id: str, body: ExplainRequest, c: Coord, who: Who) -> Explanation:
+        case_for(c, case_id, who, Action.EXPLAIN)
+        return c.explain_in(case_id, body.language, who.actor)
 
     @app.get("/cases/{case_id}/report", tags=["assessment"], dependencies=auth)
-    def report(case_id: str, c: Coord) -> Response:
+    def report(case_id: str, c: Coord, who: Who) -> Response:
+        case_for(c, case_id, who, Action.VIEW)
         return Response(c.officer_report(case_id), media_type="text/markdown; charset=utf-8")
 
     @app.get("/cases/{case_id}/explanation/audio", tags=["assessment"], dependencies=auth)
-    def explanation_audio(case_id: str, c: Coord) -> Response:
+    def explanation_audio(case_id: str, c: Coord, who: Who) -> Response:
+        case_for(c, case_id, who, Action.VIEW)
         return Response(c.speech(case_id), media_type="audio/wav")
 
     @app.post("/cases/{case_id}/disclosure/acknowledge", tags=["decision"], dependencies=auth)
-    def acknowledge(
-        case_id: str, body: AcknowledgeDisclosure, c: Coord, who: Officer
-    ) -> CreditFile:
-        return c.acknowledge_disclosure(case_id, blank_fields=body.blank_fields, actor=who)
+    def acknowledge(case_id: str, body: AcknowledgeDisclosure, c: Coord, who: Who) -> CreditFile:
+        case_for(c, case_id, who, Action.ACKNOWLEDGE)
+        return c.acknowledge_disclosure(case_id, blank_fields=body.blank_fields, actor=who.actor)
 
     @app.post("/cases/{case_id}/decision", tags=["decision"], dependencies=auth)
-    def decide(case_id: str, body: DecisionRequest, c: Coord, who: Officer) -> CreditFile:
-        return c.decide(case_id, officer_id=who, outcome=body.outcome, reason=body.reason)
+    def decide(case_id: str, body: DecisionRequest, c: Coord, who: Who) -> CreditFile:
+        case_for(c, case_id, who, Action.DECIDE)
+        return c.decide(case_id, officer_id=who.actor, outcome=body.outcome, reason=body.reason)
+
+    @app.post("/cases/{case_id}/credit-review", tags=["decision"], dependencies=auth)
+    def assign_credit_review(case_id: str, body: AssignReviewer, c: Coord, who: Who) -> CreditFile:
+        """A loan officer sends the case to a credit reviewer, who then decides it."""
+        case_for(c, case_id, who, Action.ASSIGN_REVIEWER)
+        reviewer = orgs.member(body.reviewer_uid)
+        if (
+            reviewer is None
+            or reviewer.org_id != who.org_id()
+            or reviewer.role not in (Role.CREDIT_REVIEWER, Role.ADMIN)
+        ):
+            raise SetupError("choose a credit reviewer from your organisation")
+        return c.assign_credit_review(
+            case_id, reviewer_uid=reviewer.uid, reviewer=reviewer.email, actor=who.actor
+        )
+
+    @app.post("/cases/{case_id}/requests", tags=["requests"], dependencies=auth)
+    def request_evidence(case_id: str, body: NewRequest, c: Coord, who: Who) -> CreditFile:
+        """Lenders ask the business; audit officers ask the lender or the business."""
+        case_for(c, case_id, who, Action.REQUEST)
+        if who.org_type is OrgType.LENDER and body.addressed_to != "business":
+            raise SetupError("a lender asks the business")
+        return c.add_request(
+            case_id,
+            from_org_id=who.org_id(),
+            addressed_to=body.addressed_to,
+            message=body.message,
+            actor=who.actor,
+        )
+
+    @app.post("/cases/{case_id}/requests/{request_id}/answer", tags=["requests"], dependencies=auth)
+    def answer_request(
+        case_id: str, request_id: str, body: AnswerRequest, c: Coord, who: Who
+    ) -> CreditFile:
+        case = case_for(c, case_id, who, Action.VIEW)
+        request = next((r for r in case.requests if r.id == request_id), None)
+        if request is None:
+            raise CaseNotFoundError(request_id)
+        to = Action.ANSWER_LENDER if request.addressed_to == "lender" else Action.ANSWER_BUSINESS
+        case_for(c, case_id, who, to)
+        return c.answer_request(case_id, request_id, answer=body.answer, actor=who.actor)
+
+    @app.post("/cases/{case_id}/engagements", tags=["audit"], dependencies=auth)
+    def assign_engagement(case_id: str, body: AssignEngagement, c: Coord, who: Who) -> CreditFile:
+        """An audit firm's admin assigns the case to one of its audit officers."""
+        case_for(c, case_id, who, Action.ASSIGN_ENGAGEMENT)
+        officer = orgs.member(body.assignee_uid)
+        if (
+            officer is None
+            or officer.org_id != who.org_id()
+            or officer.role is not Role.AUDIT_OFFICER
+        ):
+            raise SetupError("choose an audit officer from your firm")
+        return c.assign_engagement(
+            case_id,
+            audit_firm_id=who.org_id(),
+            assignee_uid=officer.uid,
+            assignee=officer.email,
+            actor=who.actor,
+        )
+
+    @app.post("/cases/{case_id}/findings", tags=["audit"], dependencies=auth)
+    def record_finding(case_id: str, body: NewFinding, c: Coord, who: Who) -> CreditFile:
+        case = case_for(c, case_id, who, Action.RECORD_FINDINGS)
+        engagement = my_engagement(who, case)
+        assert engagement is not None  # implied by RECORD_FINDINGS
+        return c.add_finding(
+            case_id, engagement.id, severity=body.severity, note=body.note, actor=who.actor
+        )
+
+    @app.post("/cases/{case_id}/findings/submit", tags=["audit"], dependencies=auth)
+    def submit_findings(case_id: str, c: Coord, who: Who) -> CreditFile:
+        case = case_for(c, case_id, who, Action.RECORD_FINDINGS)
+        engagement = my_engagement(who, case)
+        assert engagement is not None
+        return c.submit_engagement(case_id, engagement.id, actor=who.actor)
+
+    @app.post(
+        "/cases/{case_id}/engagements/{engagement_id}/review", tags=["audit"], dependencies=auth
+    )
+    def review_engagement(
+        case_id: str, engagement_id: str, body: EngagementReview, c: Coord, who: Who
+    ) -> CreditFile:
+        """An audit reviewer approves the findings as the final report, or returns them."""
+        case = case_for(c, case_id, who, Action.APPROVE_REPORT)
+        if not any(e.id == engagement_id for e in firm_engagements(who, case)):
+            raise CaseNotFoundError(engagement_id)
+        return c.review_engagement(
+            case_id, engagement_id, approve=body.approve, note=body.note, actor=who.actor
+        )
 
     @app.get("/cases/{case_id}/audit", tags=["audit"], dependencies=auth)
-    def audit_events(case_id: str, c: Coord) -> dict[str, Any]:
+    def audit_events(case_id: str, c: Coord, who: Who) -> dict[str, Any]:
+        case_for(c, case_id, who, Action.VIEW)
         events, verification = c.audit_log(case_id)
         return {
             "verification": verification.model_dump(),
@@ -231,13 +603,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # POST: every export is recorded in the audit chain and stored under retention, so a
     # prefetch, link preview or retry must never create one.
     @app.post("/cases/{case_id}/audit-pack", tags=["audit"], dependencies=auth)
-    def audit_pack(case_id: str, c: Coord, who: Officer) -> Response:
-        pack = c.export_audit_pack(case_id, who)
+    def audit_pack(case_id: str, c: Coord, who: Who) -> Response:
+        case_for(c, case_id, who, Action.VIEW)
+        pack = c.export_audit_pack(case_id, who.actor)
         headers = {"Content-Disposition": f'attachment; filename="audit-pack-{case_id}.zip"'}
         return Response(pack, media_type="application/zip", headers=headers)
 
     @app.post("/audit-packs/verify", tags=["audit"], dependencies=auth)
-    def verify_uploaded_pack(c: Coord, file: Annotated[UploadFile, File()]) -> PackVerification:
+    def verify_uploaded_pack(
+        c: Coord, who: Who, file: Annotated[UploadFile, File()]
+    ) -> PackVerification:
         return verify_pack(file.file.read(MAX_UPLOAD_BYTES), c.signing_public_key())
 
     @app.get("/audit-packs/public-key", tags=["audit"])
@@ -348,6 +723,10 @@ def _register_errors(app: FastAPI) -> None:
         ModelBudgetExceededError: 429,  # matched before its parent LlmUnavailableError
         LlmUnavailableError: 503,
         LlmError: 502,
+        AccessDeniedError: 403,
+        SetupError: 422,
+        AccountExistsError: 409,
+        LookupError: 404,  # after CaseNotFoundError, which is one
     }
     for error, status in statuses.items():
 
@@ -368,7 +747,16 @@ def _summary(case: CreditFile) -> CaseSummary:
         grade=case.risk.grade if case.risk else None,
         recommendation=case.risk.recommendation if case.risk else None,
         created_at=case.created_at.isoformat(),
+        lender_org_id=case.lender_org_id,
+        business_org_id=case.business_org_id,
+        reviewer=case.credit_review.reviewer if case.credit_review else None,
+        open_requests=sum(1 for r in case.requests if r.answer is None),
+        engagements=[e.status for e in case.engagements],
     )
+
+
+def _recency(case: CreditFile) -> datetime:
+    return case.updated_at or case.created_at
 
 
 @lru_cache

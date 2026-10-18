@@ -144,3 +144,43 @@ def test_firestore_call_budget_is_shared_and_never_overspent(
     # Without contention the whole allowance is usable.
     monkeypatch.setattr(usage, "_today", lambda: f"{day}-quiet")
     assert [take(i) for i in range(10)] == [True] * 8 + [False] * 2
+
+
+@needs_firestore
+def test_firestore_lists_cases_by_organisation_newest_first() -> None:
+    from ledger_lens.shared.storage import FirestoreCaseRepository
+
+    repository = FirestoreCaseRepository(PROJECT, collection=f"cases_{uuid.uuid4().hex[:6]}")
+    mine, theirs = f"org_{uuid.uuid4().hex[:8]}", f"org_{uuid.uuid4().hex[:8]}"
+    first, second, other = make_case(), make_case(), make_case()
+    first.lender_org_id = second.lender_org_id = mine
+    other.lender_org_id = theirs
+    for case in (first, other, second):
+        repository.save(case)
+    listed = repository.list_for("lender_org_id", {mine}, limit=10)
+    assert [c.case_id for c in listed] == [second.case_id, first.case_id]
+    assert repository.list_for("business_org_id", {mine}) == []
+
+
+@needs_firestore
+def test_firestore_directory_round_trip() -> None:
+    from ledger_lens.shared.directory import FirestoreDirectory
+    from ledger_lens.shared.schemas import AccessGrant, Member, Organisation, OrgType, Role
+
+    directory = FirestoreDirectory(PROJECT)
+    lender = Organisation(name=f"L {uuid.uuid4().hex[:6]}", type=OrgType.LENDER)
+    firm = Organisation(name="F", type=OrgType.AUDIT_FIRM)
+    directory.save_org(lender)
+    directory.save_org(firm)
+    assert directory.get_org(lender.id) == lender
+    assert lender in directory.list_orgs(OrgType.LENDER)
+    assert lender not in directory.list_orgs(OrgType.AUDIT_FIRM)
+    member = Member(uid=uuid.uuid4().hex, email="a@b.test", org_id=lender.id, role=Role.ADMIN)
+    directory.save_member(member)
+    assert directory.get_member(member.uid) == member
+    assert directory.list_members(lender.id) == [member]
+    grant = AccessGrant(grantor_org_id=lender.id, grantee_org_id=firm.id, granted_by="a@b.test")
+    directory.save_grant(grant)
+    assert directory.list_grants(grantee_org_id=firm.id) == [grant]
+    assert directory.list_grants(grantor_org_id=lender.id, grantee_org_id=firm.id) == [grant]
+    assert directory.get_grant(grant.id) == grant

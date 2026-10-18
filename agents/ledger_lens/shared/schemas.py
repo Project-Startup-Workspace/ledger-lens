@@ -340,6 +340,56 @@ class Explanation(Contract):
     facts_digest: str = ""  # the facts, model and prompt it was written from
 
 
+class CreditReview(Contract):
+    """The lender's second pair of eyes: a loan officer sends the case to a reviewer."""
+
+    reviewer_uid: str
+    reviewer: str
+    requested_by: str
+    requested_at: Timestamp = Field(default_factory=utc_now)
+
+
+class EvidenceRequest(Contract):
+    """A question or request for evidence, from a lender or audit firm, until answered."""
+
+    id: str = Field(default_factory=lambda: new_id("rq"))
+    from_org_id: str
+    requested_by: str
+    addressed_to: Literal["lender", "business"]
+    message: str = Field(min_length=1, max_length=2000)
+    created_at: Timestamp = Field(default_factory=utc_now)
+    answer: str | None = None
+    answered_by: str | None = None
+    answered_at: Timestamp | None = None
+
+
+class AuditFinding(Contract):
+    id: str = Field(default_factory=lambda: new_id("fd"))
+    author: str
+    severity: Literal["observation", "issue"]
+    note: str = Field(min_length=1, max_length=2000)
+    snapshot: str  # hash of the case as it was when the finding was written
+    recorded_at: Timestamp = Field(default_factory=utc_now)
+
+
+class Engagement(Contract):
+    """An audit firm's work on one case: assigned to an audit officer, whose findings an
+    audit reviewer approves as the final report or returns for more work."""
+
+    id: str = Field(default_factory=lambda: new_id("en"))
+    audit_firm_id: str
+    assignee_uid: str
+    assignee: str
+    assigned_by: str
+    assigned_at: Timestamp = Field(default_factory=utc_now)
+    status: Literal["open", "submitted", "approved", "returned"] = "open"
+    findings: list[AuditFinding] = []
+    reviewed_by: str | None = None
+    reviewed_at: Timestamp | None = None
+    review_note: str | None = None
+    report_snapshot: str | None = None  # the case as approved, when the report is final
+
+
 class CaseStatus(StrEnum):
     DRAFT = "draft"
     ASSESSED = "assessed"
@@ -373,3 +423,95 @@ class CreditFile(Contract):
     translations: dict[str, Explanation] = {}
     disclosure: Disclosure | None = None
     decision: OfficerDecision | None = None
+    # Who may see the case. A lender's own case has no business; an owner's application
+    # has no lender until the owner sends it to one.
+    lender_org_id: str | None = None
+    business_org_id: str | None = None
+    credit_review: CreditReview | None = None
+    requests: list[EvidenceRequest] = []
+    engagements: list[Engagement] = []
+
+
+# --- Organisations -----------------------------------------------------------------------------
+
+
+class OrgType(StrEnum):
+    PLATFORM = "platform"  # runs Ledger Lens; manages organisations, never sees cases
+    LENDER = "lender"
+    AUDIT_FIRM = "audit_firm"
+    BUSINESS = "business"
+
+
+class Role(StrEnum):
+    PLATFORM_ADMIN = "platform_admin"  # approves organisations, platform settings, support
+    ADMIN = "admin"  # an organisation's staff, roles and access; also does their work
+    LOAN_OFFICER = "loan_officer"  # opens and prepares applications
+    CREDIT_REVIEWER = "credit_reviewer"  # decides the applications assigned to them
+    AUDIT_OFFICER = "audit_officer"  # works assigned engagements: requests and findings
+    AUDIT_REVIEWER = "audit_reviewer"  # approves findings as the final report
+    OWNER = "owner"  # the business profile, its evidence and who it is shared with
+    ACCOUNTANT = "accountant"  # uploads records and answers requests for the owner
+
+
+ROLES_BY_ORG_TYPE: dict[OrgType, frozenset[Role]] = {
+    OrgType.PLATFORM: frozenset({Role.PLATFORM_ADMIN}),
+    OrgType.LENDER: frozenset({Role.ADMIN, Role.LOAN_OFFICER, Role.CREDIT_REVIEWER}),
+    OrgType.AUDIT_FIRM: frozenset({Role.ADMIN, Role.AUDIT_OFFICER, Role.AUDIT_REVIEWER}),
+    OrgType.BUSINESS: frozenset({Role.OWNER, Role.ACCOUNTANT}),
+}
+
+
+class OrgStatus(StrEnum):
+    ACTIVE = "active"
+    PENDING = "pending"  # a lender or audit firm that registered itself, until approved
+    SUSPENDED = "suspended"
+
+
+ORG_ID_PATTERN = r"org_[a-z0-9_]{1,40}"
+
+
+class Organisation(Contract):
+    id: str = Field(default_factory=lambda: new_id("org"), pattern=f"^{ORG_ID_PATTERN}$")
+    name: str = Field(min_length=1, max_length=120)
+    type: OrgType
+    jurisdiction: JurisdictionCode | None = None
+    status: OrgStatus = OrgStatus.ACTIVE
+    created_at: Timestamp = Field(default_factory=utc_now)
+
+
+class Member(Contract):
+    """A person's place in one organisation. `uid` is their Firebase Auth user id."""
+
+    uid: str
+    email: str
+    display_name: str = ""
+    org_id: str
+    role: Role
+    disabled: bool = False
+    created_at: Timestamp = Field(default_factory=utc_now)
+
+
+class AccessGrant(Contract):
+    """An organisation lets an audit firm see its cases until it revokes the grant, or
+    lets the platform's support see them until the grant expires."""
+
+    id: str = Field(default_factory=lambda: new_id("gr"))
+    grantor_org_id: str
+    grantee_org_id: str
+    granted_by: str
+    granted_at: Timestamp = Field(default_factory=utc_now)
+    revoked_at: Timestamp | None = None
+    revoked_by: str | None = None
+    expires_at: Timestamp | None = None
+
+    def live(self, now: datetime) -> bool:
+        return self.revoked_at is None and (self.expires_at is None or now < self.expires_at)
+
+
+class PlatformConfig(Contract):
+    """Settings the platform admin changes at run time; None keeps the deployment's value."""
+
+    daily_model_calls: int | None = Field(default=None, ge=0)
+    self_registration: bool = True  # lenders and audit firms may apply to join
+    updated_by: str | None = None
+    updated_at: Timestamp | None = None
