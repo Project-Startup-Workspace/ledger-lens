@@ -19,6 +19,8 @@ Sign-in and roles use Firebase Authentication. Under every case, five agents do 
 
 A person decides. Every step is recorded in a hash-chained audit trail and exported as a signed audit pack.
 
+**Try it:** https://ledger-lens-512003.web.app. [`docs/testing.md`](docs/testing.md) walks through every role and use case.
+
 See [`docs/architecture.md`](docs/architecture.md) for how it fits together and [`docs/roadmap.md`](docs/roadmap.md) for progress.
 
 ## Quick start (5 minutes, no cloud account)
@@ -28,7 +30,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Node 24.
 ```bash
 make setup            # Python and web dependencies, git hooks
 make api              # terminal 1: API on http://localhost:8080 (docs at /docs)
-cd web && npm run dev # terminal 2: officer app on http://localhost:3000
+cd web && npm run dev # terminal 2: web app on http://localhost:3000
 ```
 
 Open a demo case, press **Assess**, then try the jurisdiction switcher, the decision and **Export audit pack**. Everything runs offline on synthetic data with recorded model responses. To use Gemini, copy `.env.example` to `.env` and set `LL_LLM_PROVIDER`.
@@ -40,13 +42,13 @@ Or run everything in containers: `docker compose up --build`.
 | Folder | Contents |
 |---|---|
 | `agents/` | Python: the five agents, coordinator, API, ADK workflow, A2A service, tests |
-| `web/` | Next.js officer app |
+| `web/` | Next.js web app, with a view for each role |
 | `rule-packs/` | Versioned lending rules per country, as data |
 | `ml/` | Risk model artifacts, synthetic training data, BigQuery ML SQL |
 | `eval/` | Accuracy and fairness results |
 | `demo-data/` | Synthetic notebooks, statements, labels and recorded responses |
 | `infra/` | Dockerfiles and Google Cloud setup |
-| `docs/` | Architecture, decision records, roadmap, demo script, data policy |
+| `docs/` | Architecture, decision records, roadmap, testing guide, demo script, data policy |
 
 ## Development
 
