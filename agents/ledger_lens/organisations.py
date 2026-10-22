@@ -19,6 +19,7 @@ from ledger_lens.shared.identity import IdentityProvider, SignedIn
 from ledger_lens.shared.schemas import (
     ROLES_BY_ORG_TYPE,
     AccessGrant,
+    GrantStatus,
     Member,
     Organisation,
     OrgStatus,
@@ -276,8 +277,8 @@ class Organisations:
     # --- Access grants ----------------------------------------------------------------
 
     def grant(self, who: Principal, grantee_org_id: str) -> AccessGrant:
-        """A lender or business admin lets an audit firm see its cases until revoked, or
-        lets the platform's support see them for a day."""
+        """A lender or business admin asks an audit firm to audit its cases (the firm's
+        admin accepts or declines), or lets the platform's support see them for a day."""
         org = self._admin_org(who)
         if org.type not in (OrgType.LENDER, OrgType.BUSINESS):
             raise SetupError("only lenders and businesses grant access")
@@ -288,19 +289,46 @@ class Organisations:
         if grantee.status is not OrgStatus.ACTIVE:
             raise SetupError(f"{grantee.name} is not active")
         now = utc_now()
-        live = self._d.list_grants(grantor_org_id=org.id, grantee_org_id=grantee.id)
-        if existing := next((g for g in live if g.live(now)), None):
+        earlier = self._d.list_grants(grantor_org_id=org.id, grantee_org_id=grantee.id)
+        if existing := next((g for g in earlier if g.open(now)), None):
             return existing
         grant = AccessGrant(
             grantor_org_id=org.id,
             grantee_org_id=grantee.id,
             granted_by=who.actor,
+            status=GrantStatus.ACTIVE if support else GrantStatus.PENDING,
             expires_at=now + SUPPORT_ACCESS if support else None,
         )
         self._d.save_grant(grant)
         payload = {"grant": grant.id, "to": grantee.id, "expires_at": grant.expires_at}
-        self._record(org.id, "access_granted", who, payload)
-        self._record(grantee.id, "access_received", who, payload | {"from": org.id})
+        if support:
+            self._record(org.id, "access_granted", who, payload)
+            self._record(grantee.id, "access_received", who, payload | {"from": org.id})
+        else:
+            self._record(org.id, "access_requested", who, payload)
+            self._record(grantee.id, "access_request_received", who, payload | {"from": org.id})
+        return grant
+
+    def respond(self, who: Principal, grant_id: str, accept: bool) -> AccessGrant:
+        """The audit firm's admin accepts or declines a request to audit an organisation."""
+        firm = self._admin_org(who)
+        grant = self._d.get_grant(grant_id)
+        if grant is None or grant.grantee_org_id != firm.id:
+            raise LookupError(grant_id)
+        if grant.status is not GrantStatus.PENDING or grant.revoked_at is not None:
+            raise SetupError("this request has already been answered or withdrawn")
+        status = GrantStatus.ACTIVE if accept else GrantStatus.DECLINED
+        grant = grant.model_copy(
+            update={"status": status, "responded_by": who.actor, "responded_at": utc_now()}
+        )
+        self._d.save_grant(grant)
+        payload = {"grant": grant.id, "to": firm.id}
+        if accept:
+            self._record(firm.id, "access_accepted", who, payload | {"from": grant.grantor_org_id})
+            self._record(grant.grantor_org_id, "access_granted", who, payload)
+        else:
+            self._record(firm.id, "access_declined", who, payload | {"from": grant.grantor_org_id})
+            self._record(grant.grantor_org_id, "access_request_declined", who, payload)
         return grant
 
     def revoke(self, who: Principal, grant_id: str) -> AccessGrant:

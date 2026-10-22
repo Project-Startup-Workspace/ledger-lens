@@ -13,10 +13,10 @@ Site: https://ledger-lens-512003.web.app
 | Organisation | Role | Can |
 |---|---|---|
 | Platform | Platform admin | Approve or suspend organisations, set the daily Gemini cap, add organisation admins; sees cases only with time-limited support access |
-| Bank | Admin | Manage staff and roles; grant audit firms or platform support access |
+| Bank | Admin | Manage staff and roles; ask audit firms to audit; grant platform support access |
 | Bank | Loan officer | Open and prepare applications, ask the business for evidence, send a case for credit review |
 | Bank | Credit reviewer | Decide the applications assigned to them, with a reason |
-| Audit firm | Admin | Manage staff; assign engagements on cases the firm was granted |
+| Audit firm | Admin | Manage staff; accept or decline requests to audit; assign engagements |
 | Audit firm | Audit officer | Request evidence, record findings, submit for review |
 | Audit firm | Audit reviewer | Return findings or approve the final report |
 | Business | Owner | See insights, submit evidence, send an application to a lender, acknowledge terms |
@@ -27,8 +27,8 @@ Site: https://ledger-lens-512003.web.app
 Use email addresses you can receive. With Gmail, `you+officer@gmail.com` and similar all arrive in one inbox, so "Forgot password?" works for every test account.
 
 1. **Platform admin** (created with `python -m ledger_lens.organisations platform-admin`, see `infra/README.md`): under Platform settings, set the daily cap; add a bank admin to Demo Microfinance; add an audit firm with its first admin.
-2. **Bank admin**, Team & access: add a loan officer and a credit reviewer; grant the audit firm.
-3. **Audit admin**, Team & access: add an audit officer and an audit reviewer.
+2. **Bank admin**, Team & access: add a loan officer and a credit reviewer; **Ask** the audit firm **to audit**.
+3. **Audit admin**: on the home page, **Accept** the bank's request under Requests to audit. Then, in Team & access, add an audit officer and an audit reviewer.
 4. Signed out, **Create an account** → My business. Then, as the owner, Team & sharing: add an accountant.
 
 ### Use cases
@@ -41,7 +41,7 @@ Notebook pages, a wallet statement and the form values for each synthetic case a
 
 **C. Four eyes on the decision.** The loan officer has no decision button: Send for credit review → the reviewer. The credit reviewer finds it under "Sent to you for a decision" and records a decision with a reason. The owner sees the decision and the explanation in Bahasa Indonesia, with English beside it.
 
-**D. Audit engagement.** As the audit admin, Assign engagement → the audit officer. The officer asks the lender for evidence, records a finding and submits. The audit reviewer returns it once, then approves the final report; export the audit pack, and the trail stays "chain intact". The bank admin revokes the grant, and the audit firm loses the case.
+**D. Audit engagement.** As the audit admin, Assign engagement → the audit officer. The officer asks the lender for evidence, records a finding and submits. The audit reviewer returns it once, then approves the final report; export the audit pack, and the trail stays "chain intact". The bank admin revokes access, and the audit firm loses the case. Ask again, and decline it as the audit admin: the bank sees the answer, and the firm still sees nothing.
 
 **E. Other scripts.** As the loan officer, open a case with `demo-data/synthetic-grocer-kandy` (Sinhala, Sri Lanka rules) or `synthetic-market-stall-hcmc` (Vietnamese, thin file, path to approval). Switch the borrower language and back; returning to a language already written is free.
 

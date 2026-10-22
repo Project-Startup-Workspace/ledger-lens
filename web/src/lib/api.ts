@@ -142,6 +142,10 @@ export const api = {
     request<AccessGrant>("/grants", json({ grantee_org_id: granteeOrgId })),
   revoke: (grantId: string) =>
     request<AccessGrant>(`/grants/${grantId}/revoke`, { method: "POST" }),
+  respondToGrant: (grantId: string, accept: boolean) =>
+    request<AccessGrant>(`/grants/${grantId}/${accept ? "accept" : "decline"}`, {
+      method: "POST",
+    }),
   organisationAudit: () => request<AuditLog>("/organisation/audit"),
   /** Records the export in the audit chain, so it is a POST and runs only on a click. */
   exportAuditPack: async (id: string): Promise<Blob> =>

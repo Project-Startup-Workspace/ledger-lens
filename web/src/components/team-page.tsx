@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { api } from "@/lib/api";
 import { roleLabel, shortDate } from "@/lib/format";
+import { grantLive, grantPending } from "@/lib/permissions";
 import type { AccessGrant, AuditLog, Member, Organisation, Role } from "@/lib/types";
 
 import { useSession } from "./auth-provider";
@@ -80,11 +81,16 @@ export function TeamPage() {
   }
 
   if (!me?.org) return <p className="text-sm text-slate-500">Loading…</p>;
-  const live = grants.filter(
-    (g) => !g.revoked_at && (!g.expires_at || new Date(g.expires_at) > new Date()),
-  );
+  const live = grants.filter((g) => grantLive(g));
+  const pending = grants.filter(grantPending);
   const supportLive = live.some((g) => g.grantee_org_id === PLATFORM_ORG);
-  const ungranted = firms.filter((f) => !live.some((g) => g.grantee_org_id === f.id));
+  const open = [...live, ...pending];
+  const ungranted = firms.filter((f) => !open.some((g) => g.grantee_org_id === f.id));
+  // The latest answer per firm not asked again since, so a "no" is visible.
+  const declined = ungranted.flatMap((f) => {
+    const last = grants.filter((g) => g.grantee_org_id === f.id).at(-1);
+    return last?.status === "declined" ? [last] : [];
+  });
 
   return (
     <div className="space-y-4">
@@ -160,12 +166,12 @@ export function TeamPage() {
       {grantsAccess && (
         <Card title="Who can see your cases">
           <p className="mb-3 text-sm text-slate-600">
-            An audit firm you grant access can audit every case of{" "}
-            {type === "business" ? "your business" : "your organisation"} until you revoke it.
-            Platform support can read them for 24 hours. Every grant and revocation is recorded.
+            Ask an audit firm to audit {type === "business" ? "your business" : "your organisation"}
+            : once its admin accepts, it can audit every case until you revoke access. Platform
+            support can read them for 24 hours. Every request, answer and revocation is recorded.
           </p>
           <ul className="mb-3 space-y-2 text-sm">
-            {live.length === 0 && <li className="text-slate-500">No one else has access.</li>}
+            {open.length === 0 && <li className="text-slate-500">No one else has access.</li>}
             {live.map((g) => (
               <li key={g.id} className="flex items-center justify-between gap-2">
                 <span>
@@ -173,7 +179,7 @@ export function TeamPage() {
                     {g.grantee_org_id === PLATFORM_ORG ? "Platform support" : g.grantee_name}
                   </span>{" "}
                   <span className="text-slate-500">
-                    since {shortDate(g.granted_at)}
+                    since {shortDate(g.responded_at ?? g.granted_at)}
                     {g.expires_at && `, until ${new Date(g.expires_at).toLocaleString()}`}
                   </span>
                 </span>
@@ -187,6 +193,29 @@ export function TeamPage() {
                 </button>
               </li>
             ))}
+            {pending.map((g) => (
+              <li key={g.id} className="flex items-center justify-between gap-2">
+                <span>
+                  <span className="font-medium">{g.grantee_name}</span>{" "}
+                  <span className="text-slate-500">
+                    asked {shortDate(g.granted_at)}, waiting for them to accept
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => act(() => api.revoke(g.id))}
+                  className="text-xs text-rose-700"
+                >
+                  Withdraw
+                </button>
+              </li>
+            ))}
+            {declined.map((g) => (
+              <li key={g.id} className="text-slate-500">
+                {g.grantee_name} declined on {shortDate(g.responded_at ?? g.granted_at)}.
+              </li>
+            ))}
           </ul>
           <div className="flex flex-wrap gap-2">
             {ungranted.map((f) => (
@@ -196,7 +225,7 @@ export function TeamPage() {
                 disabled={busy}
                 onClick={() => act(() => api.grant(f.id))}
               >
-                Grant {f.name}
+                Ask {f.name} to audit
               </Button>
             ))}
             {!supportLive && (
