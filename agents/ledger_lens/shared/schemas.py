@@ -491,21 +491,41 @@ class Member(Contract):
     created_at: Timestamp = Field(default_factory=utc_now)
 
 
+class GrantStatus(StrEnum):
+    PENDING = "pending"  # asked of an audit firm, until its admin answers
+    ACTIVE = "active"
+    DECLINED = "declined"
+
+
 class AccessGrant(Contract):
-    """An organisation lets an audit firm see its cases until it revokes the grant, or
-    lets the platform's support see them until the grant expires."""
+    """An organisation asks an audit firm to audit its cases, and the firm sees them once
+    its admin accepts, until the grant is revoked; or it lets the platform's support see
+    them until the grant expires."""
 
     id: str = Field(default_factory=lambda: new_id("gr"))
     grantor_org_id: str
     grantee_org_id: str
     granted_by: str
     granted_at: Timestamp = Field(default_factory=utc_now)
+    status: GrantStatus = GrantStatus.ACTIVE  # grants stored before requests were active
+    responded_by: str | None = None
+    responded_at: Timestamp | None = None
     revoked_at: Timestamp | None = None
     revoked_by: str | None = None
     expires_at: Timestamp | None = None
 
     def live(self, now: datetime) -> bool:
-        return self.revoked_at is None and (self.expires_at is None or now < self.expires_at)
+        """Gives access now."""
+        return (
+            self.status is GrantStatus.ACTIVE
+            and self.revoked_at is None
+            and (self.expires_at is None or now < self.expires_at)
+        )
+
+    def open(self, now: datetime) -> bool:
+        """Gives access now, or waits for an answer."""
+        waiting = self.status is GrantStatus.PENDING and self.revoked_at is None
+        return waiting or self.live(now)
 
 
 class PlatformConfig(Contract):

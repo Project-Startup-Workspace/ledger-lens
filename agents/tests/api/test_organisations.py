@@ -239,8 +239,13 @@ def test_audit_engagement_from_assignment_to_approved_report(api: Api) -> None:
     assert api("audit_admin", "GET", case_path).status_code == 404  # no grant yet
 
     grant = api.ok("bank_admin", "POST", "/grants", json={"grantee_org_id": api.people["firm"]})
+    assert grant["status"] == "pending"
     received = api.ok("audit_officer", "GET", "/grants")
     assert received[0]["grantor_name"] == "Lanka Micro"
+    assert api("audit_admin", "GET", case_path).status_code == 404  # not yet accepted
+    accept = f"/grants/{grant['id']}/accept"
+    assert api("audit_officer", "POST", accept).status_code == 403  # the firm's admin answers
+    assert api.ok("audit_admin", "POST", accept)["status"] == "active"
     # The admin and reviewers see the granted cases; an audit officer only assigned ones.
     assert [c["case_id"] for c in api.ok("audit_admin", "GET", "/cases")] == [case_id]
     assert api.ok("audit_officer", "GET", "/cases") == []
@@ -282,6 +287,37 @@ def test_audit_engagement_from_assignment_to_approved_report(api: Api) -> None:
     log = api.ok("bank_admin", "GET", "/organisation/audit")
     assert log["verification"]["valid"]
     assert [e["event_type"] for e in log["events"]][-2:] == ["access_granted", "access_revoked"]
+
+
+def test_an_audit_firm_declines_and_a_request_can_be_withdrawn(api: Api) -> None:
+    case_path = f"/cases/{lender_case(api)}"
+    firm = {"grantee_org_id": api.people["firm"]}
+    first = api.ok("bank_admin", "POST", "/grants", json=firm)
+    assert api.ok("bank_admin", "POST", "/grants", json=firm)["id"] == first["id"]  # one open
+    assert api("bank_admin", "POST", f"/grants/{first['id']}/accept").status_code == 404
+
+    declined = api.ok("audit_admin", "POST", f"/grants/{first['id']}/decline")
+    assert declined["status"] == "declined" and declined["responded_by"]
+    assert api("audit_admin", "POST", f"/grants/{first['id']}/accept").status_code == 422
+    assert api("audit_admin", "GET", case_path).status_code == 404
+
+    again = api.ok("bank_admin", "POST", "/grants", json=firm)  # asked again after a no
+    assert again["id"] != first["id"] and again["status"] == "pending"
+    api.ok("bank_admin", "POST", f"/grants/{again['id']}/revoke")
+    assert api("audit_admin", "POST", f"/grants/{again['id']}/accept").status_code == 422
+    assert api("audit_admin", "GET", case_path).status_code == 404
+
+    events = [
+        e["event_type"] for e in api.ok("audit_admin", "GET", "/organisation/audit")["events"]
+    ]
+    assert events[-4:-2] == ["access_request_received", "access_declined"]
+    bank = [e["event_type"] for e in api.ok("bank_admin", "GET", "/organisation/audit")["events"]]
+    assert bank[-4:] == [
+        "access_requested",
+        "access_request_declined",
+        "access_requested",
+        "access_revoked",
+    ]
 
 
 def test_platform_approves_self_registered_organisations(api: Api, identity: FakeIdentity) -> None:

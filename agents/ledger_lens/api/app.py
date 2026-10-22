@@ -373,6 +373,14 @@ def create_app(
     def revoke(grant_id: str, who: Who) -> AccessGrant:
         return orgs.revoke(who, grant_id)
 
+    @app.post("/grants/{grant_id}/accept", tags=["organisations"], dependencies=auth)
+    def accept_grant(grant_id: str, who: Who) -> AccessGrant:
+        return orgs.respond(who, grant_id, accept=True)
+
+    @app.post("/grants/{grant_id}/decline", tags=["organisations"], dependencies=auth)
+    def decline_grant(grant_id: str, who: Who) -> AccessGrant:
+        return orgs.respond(who, grant_id, accept=False)
+
     @app.get("/organisation/audit", tags=["organisations"], dependencies=auth)
     def organisation_audit(who: Who) -> dict[str, Any]:
         events = orgs.events(who)

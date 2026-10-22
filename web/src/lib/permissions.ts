@@ -1,6 +1,6 @@
 // What the signed-in person may do with a case. The API enforces the same rules
 // (agents/ledger_lens/access.py); this only decides which controls to show.
-import type { CreditFile, Engagement, Me } from "./types";
+import type { AccessGrant, CreditFile, Engagement, Me } from "./types";
 
 export interface CasePermissions {
   upload: boolean;
@@ -61,4 +61,18 @@ export function permissions(me: Me | null, credit: CreditFile): CasePermissions 
       (role === "admin" || role === "audit_reviewer") &&
       firm.some((e) => e.status === "submitted"),
   };
+}
+
+/** Gives access now; mirrors AccessGrant.live in the Python contracts. */
+export function grantLive(grant: AccessGrant, now = new Date()): boolean {
+  return (
+    grant.status === "active" &&
+    !grant.revoked_at &&
+    (!grant.expires_at || new Date(grant.expires_at) > now)
+  );
+}
+
+/** Asked of an audit firm and not yet answered or withdrawn. */
+export function grantPending(grant: AccessGrant): boolean {
+  return grant.status === "pending" && !grant.revoked_at;
 }

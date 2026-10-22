@@ -41,16 +41,16 @@ People sign in with Firebase Authentication. The web app checks the ID token on 
 | Organisation | Role | May |
 |---|---|---|
 | Platform | Platform admin | Approve, suspend and add organisations; change platform settings (daily Gemini cap, self-registration); read a case only under a 24-hour support grant |
-| Lender | Admin | Manage staff and roles; grant audit firms and support access; every lender task |
+| Lender | Admin | Manage staff and roles; ask audit firms to audit, grant support access; every lender task |
 | Lender | Loan officer | Open and prepare applications, ask the business for evidence, send a case to a credit reviewer |
 | Lender | Credit reviewer | Decide the applications assigned to them |
-| Audit firm | Admin | Manage staff; assign engagements on cases its firm was granted |
+| Audit firm | Admin | Manage staff; accept or decline requests to audit; assign engagements on accepted organisations' cases |
 | Audit firm | Audit officer | Work assigned engagements: request evidence, record findings, submit for review |
 | Audit firm | Audit reviewer | Approve findings as the final report, or return them |
 | Business | Owner | The business profile; prepare and send applications; acknowledge loan terms; grant access |
 | Business | Accountant | Upload records and answer requests; never shares |
 
-Cases carry the lender and the business they belong to. An owner's application is private until the owner sends it to one lender. Audit firms see the cases of organisations that granted them access, only while the grant stands. Organisation changes are kept in each organisation's own hash chain, beside the case chains.
+Cases carry the lender and the business they belong to. An owner's application is private until the owner sends it to one lender. A lender or business asks an audit firm to audit it; the firm's admin accepts or declines, and the firm sees that organisation's cases only after accepting and while the grant stands. Organisation changes are kept in each organisation's own hash chain, beside the case chains.
 
 ## Data flow and contracts
 
