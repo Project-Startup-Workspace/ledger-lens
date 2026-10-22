@@ -264,6 +264,10 @@ export interface AccessGrant {
   grantee_org_id: string;
   granted_by: string;
   granted_at: string;
+  /** "pending" until the audit firm's admin accepts or declines. */
+  status: "pending" | "active" | "declined";
+  responded_by: string | null;
+  responded_at: string | null;
   revoked_at: string | null;
   grantor_name: string;
   grantee_name: string;
