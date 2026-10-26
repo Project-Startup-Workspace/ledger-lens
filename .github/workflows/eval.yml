@@ -27,7 +27,7 @@ jobs:
         working-directory: agents
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.0 # no floating major tag is published
+      - uses: astral-sh/setup-uv@v10.3.2 # no floating major tag is published
       - run: uv sync --locked --all-extras
       - if: env.LIVE == 'true'
         uses: google-github-actions/auth@v3
